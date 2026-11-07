@@ -1,127 +1,141 @@
-# Scene Video для SillyTavern
+# Scene Video for SillyTavern
 
-Розширення робить коротке «аматорське» відео (вертикальне, ніби знято на телефон) зі сцени, яку написала LLM.
+🇬🇧 **English** · 🇺🇦 [Українська](README.uk.md)
 
-Як це працює:
+A SillyTavern extension that turns a scene written by the LLM into a short, amateur-looking video clip: vertical, handheld, as if someone in the scene filmed it on a phone.
 
-1. Ви натискаєте 🎥 у меню повідомлення або виконуєте `/scenevideo`.
-2. Поточна LLM з SillyTavern перетворює повідомлення на промпт для відеомоделі. Вона враховує опис персонажа, персону та кілька попередніх повідомлень. Імена замінюються описом зовнішності, бо відеомоделі їх не знають.
-3. Промпт можна переглянути й відредагувати. До нього автоматично додається суфікс стилю «smartphone footage».
-4. Відео генерується через **OpenRouter**, **WaveSpeed** або **ComfyUI**, зберігається в `data/<user>/user/images/<персонаж>/` і прикріплюється до повідомлення.
+How it works:
 
-Модель за замовчуванням — **MiniMax H3**:
+1. Click 🎥 in a message's menu, or run `/scenevideo`.
+2. Your current SillyTavern LLM rewrites the message as a prompt for a video model. It uses the character description, your persona and a few earlier messages for context. Names are replaced with descriptions of appearance, because video models don't know who the characters are.
+3. You can review and edit the prompt. The "smartphone footage" style is added for you.
+4. The clip is generated with **OpenRouter**, **WaveSpeed** or **ComfyUI**. It is saved to `data/<user>/user/images/<character>/` and attached to the message.
 
-| Бекенд | Model id | Тривалість | Примітки |
+The default model is **MiniMax H3**:
+
+| Backend | Model id | Duration | Notes |
 |---|---|---|---|
-| OpenRouter | `minimax/hailuo-3` | 5–15 с | звук, ~$0.13/с |
-| OpenRouter | `minimax/hailuo-3-max` | 5–15 с | 480p/768p, без звуку, $0.05–0.08/с |
-| WaveSpeed | `wavespeed-ai/minimax-h3/text-to-video` | 3–15 с | 480p/540p/768p/1080p, звук |
+| OpenRouter | `minimax/hailuo-3` | 5–15 s | with audio, ~$0.13/s |
+| OpenRouter | `minimax/hailuo-3-max` | 5–15 s | 480p/768p, no audio, $0.05–0.08/s |
+| WaveSpeed | `wavespeed-ai/minimax-h3/text-to-video` | 3–15 s | 480p/540p/768p/1080p, with audio |
 
-Можна вказати будь-яку іншу відеомодель OpenRouter чи WaveSpeed. Кнопка «Show OpenRouter video models» показує актуальний список із цінами.
+Any other OpenRouter or WaveSpeed video model works too. In the settings, **Show OpenRouter video models** lists the current models and their prices.
 
-## Формат промпту MiniMax H3
+## Installation
 
-H3 найкраще працює зі структурованим промптом з [офіційного гайду](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md) (режим T2VA):
+The extension has two parts:
+
+- **UI extension**: the button, the settings and the LLM prompt step. Required.
+- **Server plugin**: a small proxy to OpenRouter and WaveSpeed. Required for those two backends, not needed for ComfyUI.
+
+### 1. UI extension
+
+In SillyTavern, open **Extensions → Install extension** and paste the repository URL:
+
+```
+https://github.com/<you>/st-scene-video
+```
+
+### 2. Server plugin
+
+SillyTavern cannot install server plugins from the Extensions menu, so clone the same repository into the `plugins` folder:
+
+```bash
+cd SillyTavern/plugins
+git clone https://github.com/<you>/st-scene-video scene-video
+```
+
+Then set `enableServerPlugins: true` in `SillyTavern/config.yaml` and restart SillyTavern. The server log should show `[scene-video] plugin loaded`.
+
+SillyTavern finds the plugin through `"main": "server/index.mjs"` in `package.json`. With `enableServerPluginsAutoUpdate: true`, it runs `git pull` on the plugin at startup.
+
+### 3. API keys
+
+- **OpenRouter** uses the key you already saved in SillyTavern's API Connections (`api_key_openrouter`).
+- **WaveSpeed**: paste the key in the extension settings and click **Save**. It is stored in SillyTavern's secret store as `api_key_wavespeed`.
+
+The settings panel shows whether the plugin is loaded and the key is set.
+
+**Why a server plugin?** API keys should never reach the browser. The plugin reads them from SillyTavern's secret store and makes the requests itself. It also polls the job until the video is ready, which can take several minutes. ComfyUI goes through SillyTavern's built-in endpoints (`/api/sd/comfy/*`), so it doesn't need the plugin.
+
+## MiniMax H3 prompt format
+
+H3 works best with the structured prompt described in the [official prompt-writing guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md) (T2VA mode):
 
 ```
 integrated_multimodal_description: [Shot 1] Live-action, amateur vertical smartphone footage, ...
-  ... the young woman with a quiet, breathy voice (S1) says: <d>[Ukrainian] Ти це бачиш?</d>
+  ... the young woman with a quiet, breathy voice (S1) says: <d>[English] Are you seeing this?</d>
 
 overall_soundscape: ...
 
 non_diegetic_music: N/A
 ```
 
-У режимі **Prompt format → Auto** розширення саме вмикає цей формат, коли вибрано модель H3 (`minimax/hailuo-3*`, `…/minimax-h3/…`). Для інших моделей використовується звичайний промпт з одного абзацу.
+With **Prompt format → Auto**, the extension switches to this format whenever an H3 model is selected (`minimax/hailuo-3*`, `…/minimax-h3/…`). Other models get a plain one-paragraph prompt.
 
-Особливості формату H3:
+How the H3 format is handled:
 
-- Інструкція для LLM — стисла адаптація гайду під «телефонне» відео: один безперервний кадр, ручна камера (`shakes slightly`, `POV`, `tracking`), мовці з ID `(S1)`, `(S2)`.
-- Людина, що знімає, — за кадром.
-- Репліки беруться зі сцени дослівно, мовою оригіналу, з тегом `[Ukrainian]`, `[English]` тощо.
-- Стиль вставляється на початок `[Shot 1]` (плейсхолдер `{{style}}`), а не дописується в кінець, щоб не зламати структуру.
-- `non_diegetic_music` дорівнює `N/A`: в аматорського відео немає закадрової музики.
-- Відповідь LLM нормалізується: прибирається вступ, code fences і `**жирні**` назви полів; якщо немає поля `non_diegetic_music`, воно додається.
-- Негативний промпт для H3 не надсилається, бо модель його не підтримує.
+- The LLM instruction is a condensed version of the guide, adapted to phone footage. The clip is one continuous shot with a handheld camera (`shakes slightly`, `POV`, `tracking`), and speakers get IDs `(S1)`, `(S2)`.
+- The person filming is off-screen.
+- Dialogue is copied from the scene word for word, in its original language, with a tag such as `[English]` or `[Ukrainian]`.
+- The style goes at the start of `[Shot 1]` (the `{{style}}` placeholder). It is not appended at the end, which would break the structure.
+- `non_diegetic_music` is `N/A`, because amateur footage has no background score.
+- The LLM output is cleaned up: preambles, code fences and `**bold**` field names are removed, and a missing `non_diegetic_music` field is added.
+- No negative prompt is sent, because H3 doesn't support one.
 
-## Встановлення з GitHub
-
-UI-частина встановлюється стандартно: **Extensions → Install extension**, вставити URL репозиторію. SillyTavern клонує його в `data/<user>/extensions/` і потім оновлює кнопкою Update.
-
-Умови:
-
-- `manifest.json` лежить у корені — так і є;
-- **зібраний `dist/index.js` закомічено в репозиторій.** SillyTavern не запускає `npm run build`. Тому перед кожним пушем виконуйте `npm run build` і комітьте `dist/`.
-
-Серверний плагін через це меню **не** встановлюється — це обмеження SillyTavern. Його клонують окремо, той самий репозиторій:
-
-```bash
-cd ~/SillyTavern-new/plugins
-git clone https://github.com/<you>/st-scene-video scene-video
-# config.yaml: enableServerPlugins: true → перезапуск
-```
-
-SillyTavern завантажить плагін через поле `"main": "server/index.mjs"` у `package.json`. Якщо `enableServerPluginsAutoUpdate: true`, плагін оновлюватиметься при старті (`git pull`). Для ComfyUI плагін не потрібен.
-
-## Структура
+## Slash command
 
 ```
-src/          UI-розширення (TypeScript, webpack — на основі SillyTavern/Extension-WebpackTemplate)
-server/       серверний плагін SillyTavern: проксі до OpenRouter і WaveSpeed
-workflows/    приклад ComfyUI workflow (Wan 2.2 TI2V 5B)
+/scenevideo                 — video for the last message
+/scenevideo 12              — video for message #12
+/scenevideo prompt="..."    — use your own prompt and skip the LLM step
+/scenevideo quiet=true      — skip the prompt review popup
 ```
 
-**Навіщо серверний плагін.** API-ключі не повинні потрапляти в браузер. Плагін читає ключі зі сховища секретів SillyTavern:
-
-- `api_key_openrouter` — той самий ключ, що в API Connections;
-- `api_key_wavespeed` — зберігається кнопкою **Save** у налаштуваннях розширення.
-
-Плагін також довго опитує статус задачі, що для браузера незручно. ComfyUI працює через вбудовані ендпоінти SillyTavern (`/api/sd/comfy/*`), тому плагін для нього не потрібен.
-
-## Встановлення (розробка)
-
-```bash
-cd ~/projects/st-scene-video
-npm install
-npm run build              # → dist/index.js
-./install.sh ~/SillyTavern-new default-user
-```
-
-`install.sh` створює два симлінки:
-
-- `data/default-user/extensions/st-scene-video` → цей репозиторій (UI);
-- `plugins/scene-video` → `server/` (плагін).
-
-Далі встановіть у `config.yaml` значення `enableServerPlugins: true` і перезапустіть SillyTavern. У логах сервера має з'явитися `[scene-video] plugin loaded`.
-
-Для ComfyUI скопіюйте `workflows/SceneVideo_Wan22_5B.json` у `data/default-user/user/workflows/` і виберіть його в налаштуваннях.
-
-## Плейсхолдери ComfyUI workflow
-
-Workflow має бути в API-форматі. Підставляються такі значення (разом із лапками):
-
-| Плейсхолдер | Значення |
-|---|---|
-| `"%prompt%"` | промпт + суфікс стилю |
-| `"%negative_prompt%"` | негативний промпт |
-| `"%seed%"` | випадкове ціле |
-| `"%width%"` / `"%height%"` | 704×1280 для 9:16, 1280×704 для 16:9 |
-| `"%length%"` | кількість кадрів (`seconds × fps`, 4n+1) |
-| `"%fps%"` / `"%seconds%"` | з налаштувань |
-
-Результатом має бути вузол `SaveVideo` (core) або `VHS_VideoCombine`.
-
-## Slash-команда
-
-```
-/scenevideo                 — відео для останнього повідомлення
-/scenevideo 12              — для повідомлення #12
-/scenevideo prompt="..."    — свій промпт без кроку LLM
-/scenevideo quiet=true      — без вікна редагування промпту
-```
-
-Команда повертає URL збереженого відео, тому її можна використовувати в STscript і Quick Replies.
+The command returns the URL of the saved video, so you can use it in STscript and Quick Replies.
 
 ## Extra params
 
-Кожна модель WaveSpeed має власну схему параметрів. У поле **Extra params (JSON)** можна вписати додаткові поля, які буде додано до запиту. Значення `null` прибирає поле зі стандартного набору. Приклад: `{"seed": 42, "aspect_ratio": null}`.
+Each WaveSpeed model has its own parameter schema. Fields in **Extra params (JSON)** are merged into the request, and `null` removes a default field. Example: `{"seed": 42, "aspect_ratio": null}`.
+
+## ComfyUI
+
+Copy `workflows/SceneVideo_Wan22_5B.json` into `data/<user>/user/workflows/`, then select it in the settings. It is an example for Wan 2.2 TI2V 5B and hasn't been tested yet.
+
+A workflow must be in API format. These placeholders are replaced, including their quotes:
+
+| Placeholder | Value |
+|---|---|
+| `"%prompt%"` | prompt + style suffix |
+| `"%negative_prompt%"` | negative prompt |
+| `"%seed%"` | random integer |
+| `"%width%"` / `"%height%"` | 704×1280 for 9:16, 1280×704 for 16:9 |
+| `"%length%"` | frame count (`seconds × fps`, rounded to 4n+1) |
+| `"%fps%"` / `"%seconds%"` | from the settings |
+
+The output node must be `SaveVideo` (core) or `VHS_VideoCombine`.
+
+## Development
+
+```
+src/          UI extension (TypeScript + webpack, based on SillyTavern/Extension-WebpackTemplate)
+server/       SillyTavern server plugin: proxy for OpenRouter and WaveSpeed
+workflows/    example ComfyUI workflow (Wan 2.2 TI2V 5B)
+```
+
+```bash
+npm install
+npm run build                          # → dist/index.js
+./install.sh /path/to/SillyTavern default-user
+```
+
+`install.sh` creates two symlinks:
+
+- `data/<user>/extensions/st-scene-video` → this repository (UI);
+- `plugins/scene-video` → `server/` (plugin).
+
+SillyTavern does not build extensions, so `dist/` must be committed. Run `npm run build` before every push.
+
+## License
+
+[AGPL-3.0](LICENSE)

@@ -2,7 +2,7 @@
 # Links Scene Video into a SillyTavern install for development.
 # Usage: ./install.sh [/path/to/SillyTavern] [user]
 set -euo pipefail
-ST="${1:-$HOME/SillyTavern-new}"
+ST="${1:-$HOME/SillyTavern}"
 USER_DIR="${2:-default-user}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
