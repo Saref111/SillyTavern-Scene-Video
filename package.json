@@ -1,7 +1,8 @@
 {
-  "name": "extension-webpack-template",
+  "name": "st-scene-video",
   "type": "module",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "main": "server/index.mjs",
   "private": true,
   "scripts": {
     "build": "webpack --mode production",

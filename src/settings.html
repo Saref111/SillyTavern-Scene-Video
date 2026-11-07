@@ -1,0 +1,123 @@
+<div id="scene_video_settings" class="scene-video-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Scene Video</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <small class="scene-video-hint">Turns a chat message into a short smartphone-style video clip. Use the <i class="fa-solid fa-video"></i> button in a message's menu or <code>/scenevideo</code>.</small>
+
+            <label class="checkbox_label"><input type="checkbox" id="scene_video_enabled" /> Show the message button</label>
+            <label class="checkbox_label"><input type="checkbox" id="scene_video_confirm" /> Review the prompt before generating</label>
+            <label class="checkbox_label"><input type="checkbox" id="scene_video_auto" /> Generate automatically for every new character message (costs money)</label>
+
+            <hr />
+            <label for="scene_video_backend">Backend</label>
+            <select id="scene_video_backend" class="text_pole">
+                <option value="openrouter">OpenRouter</option>
+                <option value="wavespeed">WaveSpeed</option>
+                <option value="comfy">ComfyUI</option>
+            </select>
+            <div id="scene_video_plugin_status" class="scene-video-hint"></div>
+
+            <div class="scene-video-cloud">
+                <label for="scene_video_model">Model</label>
+                <input id="scene_video_model" class="text_pole" list="scene_video_models" placeholder="model id" />
+                <datalist id="scene_video_models"></datalist>
+
+                <label for="scene_video_resolution">Resolution <small>(empty = model default)</small></label>
+                <input id="scene_video_resolution" class="text_pole" list="scene_video_resolutions" placeholder="e.g. 768p" />
+                <datalist id="scene_video_resolutions">
+                    <option value="480p"></option>
+                    <option value="540p"></option>
+                    <option value="720p"></option>
+                    <option value="768p"></option>
+                    <option value="1080p"></option>
+                    <option value="2K"></option>
+                </datalist>
+
+                <label for="scene_video_extra">Extra params (JSON) <small>— merged into the request; <code>null</code> removes a field</small></label>
+                <textarea id="scene_video_extra" class="text_pole" rows="2" placeholder='{"seed": 42}'></textarea>
+            </div>
+
+            <div class="scene-video-openrouter">
+                <label class="checkbox_label"><input type="checkbox" id="scene_video_audio" /> Generate audio (if the model supports it)</label>
+                <small class="scene-video-hint">Uses the OpenRouter key already saved in SillyTavern's API connections.</small>
+                <div class="menu_button" id="scene_video_or_models">Show OpenRouter video models</div>
+            </div>
+
+            <div class="scene-video-wavespeed">
+                <label for="scene_video_ws_key">WaveSpeed API key</label>
+                <div class="flex-container">
+                    <input id="scene_video_ws_key" type="password" class="text_pole flex1" placeholder="saved in SillyTavern secrets" autocomplete="off" />
+                    <div class="menu_button" id="scene_video_ws_key_save">Save</div>
+                </div>
+                <small class="scene-video-hint">The model is the API path, e.g. <code>wavespeed-ai/minimax-h3/text-to-video</code>.</small>
+            </div>
+
+            <div class="scene-video-comfy">
+                <label for="scene_video_comfy_url">ComfyUI URL</label>
+                <input id="scene_video_comfy_url" class="text_pole" placeholder="http://127.0.0.1:8188" />
+                <label for="scene_video_comfy_workflow">Workflow <small>(from data/&lt;user&gt;/user/workflows)</small></label>
+                <div class="flex-container">
+                    <select id="scene_video_comfy_workflow" class="text_pole flex1"></select>
+                    <div class="menu_button fa-solid fa-rotate" id="scene_video_comfy_refresh" title="Reload list"></div>
+                </div>
+                <label for="scene_video_comfy_fps">FPS</label>
+                <input id="scene_video_comfy_fps" type="number" min="8" max="60" class="text_pole" />
+            </div>
+
+            <hr />
+            <div class="flex-container">
+                <div class="flex1">
+                    <label for="scene_video_seconds">Duration, s</label>
+                    <input id="scene_video_seconds" type="number" min="2" max="20" class="text_pole" />
+                </div>
+                <div class="flex1">
+                    <label for="scene_video_aspect">Aspect</label>
+                    <select id="scene_video_aspect" class="text_pole">
+                        <option value="9:16">9:16 (vertical phone)</option>
+                        <option value="16:9">16:9</option>
+                        <option value="1:1">1:1</option>
+                        <option value="3:4">3:4</option>
+                        <option value="4:3">4:3</option>
+                    </select>
+                </div>
+            </div>
+
+            <hr />
+            <b>Prompt</b>
+            <div class="flex-container">
+                <div class="flex1">
+                    <label for="scene_video_context">Context messages</label>
+                    <input id="scene_video_context" type="number" min="0" max="20" class="text_pole" />
+                </div>
+                <div class="flex1">
+                    <label for="scene_video_response_length">Max prompt tokens</label>
+                    <input id="scene_video_response_length" type="number" min="50" max="2000" class="text_pole" />
+                </div>
+            </div>
+            <label for="scene_video_format">Prompt format</label>
+            <select id="scene_video_format" class="text_pole">
+                <option value="auto">Auto (MiniMax H3 format for H3 models)</option>
+                <option value="generic">Generic (one paragraph)</option>
+                <option value="minimax-h3">MiniMax H3 (structured, with audio and dialogue tags)</option>
+            </select>
+            <small id="scene_video_format_status" class="scene-video-hint"></small>
+
+            <div id="scene_video_system_generic_block">
+                <label for="scene_video_system">Instruction for the LLM: generic <small>({{seconds}} is replaced)</small></label>
+                <textarea id="scene_video_system" class="text_pole" rows="8"></textarea>
+            </div>
+            <div id="scene_video_system_h3_block">
+                <label for="scene_video_system_h3">Instruction for the LLM: MiniMax H3 <small>({{seconds}}, {{aspect}}, {{style}} are replaced; based on the <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noopener">official guide</a>)</small></label>
+                <textarea id="scene_video_system_h3" class="text_pole" rows="12"></textarea>
+            </div>
+            <label for="scene_video_style">Style <small>(appended to generic prompts; inserted into [Shot 1] for H3)</small></label>
+            <textarea id="scene_video_style" class="text_pole" rows="3"></textarea>
+            <label for="scene_video_negative">Negative prompt <small>(WaveSpeed / ComfyUI)</small></label>
+            <textarea id="scene_video_negative" class="text_pole" rows="2"></textarea>
+            <div class="menu_button" id="scene_video_reset_prompts">Restore default prompts</div>
+        </div>
+    </div>
+</div>

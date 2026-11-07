@@ -1,3 +1,33 @@
-.hello-world-message {
-    color: blue;
+.scene-video-settings label {
+    display: block;
+    margin-top: 6px;
+}
+
+.scene-video-settings .checkbox_label {
+    display: flex;
+}
+
+.scene-video-settings textarea {
+    width: 100%;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: 0.9em;
+}
+
+.scene-video-hint {
+    display: block;
+    opacity: 0.75;
+    margin: 4px 0;
+}
+
+.scene-video-settings .menu_button {
+    margin-top: 6px;
+}
+
+.mes_button.scene_video_gen.scene-video-busy {
+    animation: scene-video-pulse 1.2s ease-in-out infinite;
+    color: var(--active, #e8a33d);
+}
+
+@keyframes scene-video-pulse {
+    50% { opacity: 0.35; }
 }
