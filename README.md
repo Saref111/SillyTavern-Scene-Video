@@ -33,7 +33,7 @@ The extension has two parts:
 In SillyTavern, open **Extensions → Install extension** and paste the repository URL:
 
 ```
-https://github.com/<you>/st-scene-video
+https://github.com/Saref111/SillyTavern-Scene-Video
 ```
 
 ### 2. Server plugin
@@ -42,7 +42,7 @@ SillyTavern cannot install server plugins from the Extensions menu, so clone the
 
 ```bash
 cd SillyTavern/plugins
-git clone https://github.com/<you>/st-scene-video scene-video
+git clone https://github.com/Saref111/SillyTavern-Scene-Video scene-video
 ```
 
 Then set `enableServerPlugins: true` in `SillyTavern/config.yaml` and restart SillyTavern. The server log should show `[scene-video] plugin loaded`.
@@ -131,7 +131,7 @@ npm run build                          # → dist/index.js
 
 `install.sh` creates two symlinks:
 
-- `data/<user>/extensions/st-scene-video` → this repository (UI);
+- `data/<user>/extensions/SillyTavern-Scene-Video` → this repository (UI);
 - `plugins/scene-video` → `server/` (plugin).
 
 SillyTavern does not build extensions, so `dist/` must be committed. Run `npm run build` before every push.

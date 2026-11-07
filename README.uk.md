@@ -59,7 +59,7 @@ UI-частина встановлюється стандартно: **Extension
 
 ```bash
 cd ~/SillyTavern/plugins
-git clone https://github.com/<you>/st-scene-video scene-video
+git clone https://github.com/Saref111/SillyTavern-Scene-Video scene-video
 # config.yaml: enableServerPlugins: true → перезапуск
 ```
 
@@ -83,7 +83,7 @@ workflows/    приклад ComfyUI workflow (Wan 2.2 TI2V 5B)
 ## Встановлення (розробка)
 
 ```bash
-cd ~/projects/st-scene-video
+cd ~/SillyTavern-Scene-Video
 npm install
 npm run build              # → dist/index.js
 ./install.sh ~/SillyTavern default-user
@@ -91,7 +91,7 @@ npm run build              # → dist/index.js
 
 `install.sh` створює два симлінки:
 
-- `data/default-user/extensions/st-scene-video` → цей репозиторій (UI);
+- `data/default-user/extensions/SillyTavern-Scene-Video` → цей репозиторій (UI);
 - `plugins/scene-video` → `server/` (плагін).
 
 Далі встановіть у `config.yaml` значення `enableServerPlugins: true` і перезапустіть SillyTavern. У логах сервера має з'явитися `[scene-video] plugin loaded`.

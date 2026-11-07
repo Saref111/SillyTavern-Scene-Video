@@ -8,7 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 [ -f "$HERE/dist/index.js" ] || { echo "Build first: npm install && npm run build"; exit 1; }
 
-ln -sfn "$HERE" "$ST/data/$USER_DIR/extensions/st-scene-video"
+ln -sfn "$HERE" "$ST/data/$USER_DIR/extensions/SillyTavern-Scene-Video"
 mkdir -p "$ST/plugins"
 ln -sfn "$HERE/server" "$ST/plugins/scene-video"
 

@@ -1,5 +1,5 @@
 {
-  "name": "st-scene-video",
+  "name": "sillytavern-scene-video",
   "type": "module",
   "version": "0.1.0",
   "main": "server/index.mjs",
