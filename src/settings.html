@@ -42,7 +42,6 @@
             </div>
 
             <div class="scene-video-openrouter">
-                <label class="checkbox_label"><input type="checkbox" id="scene_video_audio" /> Generate audio (if the model supports it)</label>
                 <small class="scene-video-hint">Uses the OpenRouter key already saved in SillyTavern's API connections.</small>
                 <div class="menu_button" id="scene_video_or_models">Show OpenRouter video models</div>
             </div>
@@ -85,6 +84,21 @@
                     </select>
                 </div>
             </div>
+            <label for="scene_video_camera">Camera</label>
+            <select id="scene_video_camera" class="text_pole">
+                <option value="bystander">Bystander phone (someone in the scene films)</option>
+                <option value="pov">First-person POV (you film, people talk to you)</option>
+                <option value="selfie">Selfie / vlog (a character films themselves)</option>
+                <option value="cctv">Security camera (fixed, high angle, wide)</option>
+                <option value="cinematic">Cinematic (film camera, smooth moves, score)</option>
+            </select>
+            <label for="scene_video_audio_mode">Sound</label>
+            <select id="scene_video_audio_mode" class="text_pole">
+                <option value="full">Dialogue and ambient sound</option>
+                <option value="dialogue">Dialogue only</option>
+                <option value="ambient">Ambient sound, no speech</option>
+                <option value="none">No sound (OpenRouter generates without audio)</option>
+            </select>
             <label for="scene_video_shots">Shots</label>
             <select id="scene_video_shots" class="text_pole">
                 <option value="single">One continuous shot</option>
@@ -113,16 +127,16 @@
             <small id="scene_video_format_status" class="scene-video-hint"></small>
 
             <div id="scene_video_system_generic_block">
-                <label for="scene_video_system">Instruction for the LLM: generic <small>({{seconds}}, {{words}}, {{shots}} are replaced)</small></label>
+                <label for="scene_video_system">Instruction for the LLM: generic <small>({{seconds}}, {{words}}, {{shots}}, {{camera}}, {{audio}}, {{user}} are replaced)</small></label>
                 <textarea id="scene_video_system" class="text_pole" rows="8"></textarea>
             </div>
             <div id="scene_video_system_h3_block">
-                <label for="scene_video_system_h3">Instruction for the LLM: MiniMax H3 <small>({{seconds}}, {{words}}, {{aspect}}, {{style}}, {{shots}} are replaced; based on the <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noopener">official guide</a>)</small></label>
+                <label for="scene_video_system_h3">Instruction for the LLM: MiniMax H3 <small>({{seconds}}, {{words}}, {{aspect}}, {{style}}, {{shots}}, {{camera}}, {{audio}}, {{music}}, {{user}} are replaced; based on the <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noopener">official guide</a>)</small></label>
                 <textarea id="scene_video_system_h3" class="text_pole" rows="12"></textarea>
             </div>
-            <label for="scene_video_style">Style <small>(appended to generic prompts; inserted into [Shot 1] for H3)</small></label>
+            <label for="scene_video_style">Style for camera <b id="scene_video_look_camera"></b> <small>(appended to generic prompts; inserted into [Shot 1] for H3)</small></label>
             <textarea id="scene_video_style" class="text_pole" rows="3"></textarea>
-            <label for="scene_video_negative">Negative prompt <small>(WaveSpeed / ComfyUI)</small></label>
+            <label for="scene_video_negative">Negative prompt for this camera <small>(WaveSpeed / ComfyUI)</small></label>
             <textarea id="scene_video_negative" class="text_pole" rows="2"></textarea>
             <div class="menu_button" id="scene_video_reset_prompts">Restore default prompts</div>
         </div>

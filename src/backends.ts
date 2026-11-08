@@ -59,7 +59,7 @@ async function generateCloud({ prompt, negative, settings, signal }: GenerateArg
         seconds: settings.seconds,
         aspect: settings.aspect,
         resolution: cfg.resolution || undefined,
-        audio: backend === 'openrouter' ? settings.audio : undefined,
+        audio: backend === 'openrouter' ? settings.audioMode !== 'none' : undefined,
         extra: parseExtra(cfg.extra),
     }, signal);
     return { format: data.format, data: data.data };

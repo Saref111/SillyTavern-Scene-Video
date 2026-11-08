@@ -6,7 +6,7 @@ A SillyTavern extension that turns a scene written by the LLM into a short, amat
 
 How it works:
 
-1. Click 🎥 in a message's menu, or run `/scenevideo`.
+1. Click 🎥 in a message's menu, or run `/scenevideo`. To film one moment, select that text in the message first.
 2. Your current SillyTavern LLM rewrites the message as a prompt for a video model. It uses the character description, your persona and a few earlier messages for context. Names are replaced with descriptions of appearance, because video models don't know who the characters are.
 3. You can review and edit the prompt, or click **Regenerate** for a new one. The "smartphone footage" style is added for you.
 4. The clip is generated with **OpenRouter**, **WaveSpeed** or **ComfyUI**. It is saved to `data/<user>/user/images/<character>/` and attached to the message.
@@ -76,14 +76,26 @@ With **Prompt format → Auto**, the extension switches to this format whenever 
 How the H3 format is handled:
 
 - The LLM instruction is a condensed version of the guide, adapted to phone footage: a handheld camera (`shakes slightly`, `POV`, `tracking`), one or several shots depending on **Shots**, and speaker IDs `(S1)`, `(S2)`.
-- The person filming is off-screen.
+- Who films and how the camera moves depend on **Camera**.
 - Dialogue is copied from the scene word for word, in its original language, with a tag such as `[English]` or `[Ukrainian]`.
 - The style goes at the start of `[Shot 1]` (the `{{style}}` placeholder). It is not appended at the end, which would break the structure.
-- `non_diegetic_music` is `N/A`, because amateur footage has no background score.
+- `non_diegetic_music` is `N/A`, because amateur footage has no background score. Only the **Cinematic** camera may describe a score.
 - The LLM output is cleaned up: preambles, code fences and `**bold**` field names are removed, and a missing `non_diegetic_music` field is added.
 - No negative prompt is sent, because H3 doesn't support one.
 
 ## Prompt settings
+
+**Camera** sets who or what records the clip. Each camera has its own **Style** and **Negative prompt**; the two fields edit the ones of the selected camera.
+
+| Camera | What you get |
+|---|---|
+| Bystander phone (default) | someone in the scene films on a phone and reacts to what happens |
+| First-person POV | your character films; people look and talk into the lens, your hands may appear, your face never does |
+| Selfie / vlog | a character films themselves with the front camera at arm's length; face close, others squeeze into the frame |
+| Security camera | a fixed camera high in a corner, wide shot, no camera movement; emotion through body language |
+| Cinematic | a film camera with smooth moves and close-ups; H3 may add a background score |
+
+**Sound** sets what the clip sounds like: dialogue and ambient sound (default), dialogue only, ambient sound without speech, or no sound. With **No sound**, OpenRouter generates the video without audio; for WaveSpeed only the prompt changes.
 
 **Shots** sets how the clip is cut:
 
@@ -106,9 +118,13 @@ Placeholders in the instructions:
 | `{{seconds}}` | clip duration |
 | `{{words}}` | word budget for the description (20 per second, 80–260) |
 | `{{shots}}` | the rule for the selected **Shots** option |
-| `{{aspect}}`, `{{style}}` | aspect ratio and style (H3 only) |
+| `{{camera}}` | the rule for the selected **Camera** |
+| `{{audio}}` | the rule for the selected **Sound** |
+| `{{music}}` | the background music rule for the selected camera (H3 only) |
+| `{{user}}` | your persona's name |
+| `{{aspect}}`, `{{style}}` | aspect ratio and the selected camera's style (H3 only) |
 
-If a custom instruction has no `{{shots}}`, the rule is appended at the end. Default instructions are upgraded automatically after an update; edited ones are kept, so add new placeholders yourself or click **Restore default prompts**.
+If a custom instruction has no `{{shots}}`, `{{camera}}`, `{{audio}}` or `{{music}}`, that rule is appended at the end. Default instructions are upgraded automatically after an update; edited ones are kept, so add new placeholders yourself or click **Restore default prompts**.
 
 ## Slash command
 
@@ -117,6 +133,7 @@ If a custom instruction has no `{{shots}}`, the rule is appended at the end. Def
 /scenevideo 12              — video for message #12
 /scenevideo prompt="..."    — use your own prompt and skip the LLM step
 /scenevideo quiet=true      — skip the prompt review popup
+/scenevideo focus="..."     — build the clip around this fragment of the message
 ```
 
 The command returns the URL of the saved video, so you can use it in STscript and Quick Replies.

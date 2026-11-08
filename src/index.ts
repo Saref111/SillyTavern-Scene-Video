@@ -1,13 +1,17 @@
 import './style.css';
 import settingsHtml from './settings.html';
 import {
+    AUDIO_MODES,
+    AudioMode,
     BackendId,
-    DEFAULT_NEGATIVE,
+    CAMERA_MODES,
+    CameraMode,
     DEFAULT_SETTINGS,
-    DEFAULT_STYLE_SUFFIX,
     DEFAULT_SYSTEM_PROMPT,
+    defaultLooks,
     DEFAULT_SYSTEM_PROMPT_H3,
     H3_MODEL_PATTERN,
+    LEGACY_NEGATIVE_HASHES,
     LEGACY_PROMPT_HASHES,
     MODEL_SUGGESTIONS,
     PromptFormat,
@@ -33,7 +37,12 @@ const running = new Map<number, AbortController>();
 function settings(): SceneVideoSettings {
     const all = ctx().extensionSettings;
     const current = all[MODULE] ?? {};
+    migrateLegacyFields(current);
     // Deep-merge defaults so new fields appear after updates.
+    const looks = defaultLooks();
+    for (const mode of Object.keys(looks) as CameraMode[]) {
+        looks[mode] = { ...looks[mode], ...current.looks?.[mode] };
+    }
     all[MODULE] = {
         ...structuredClone(DEFAULT_SETTINGS),
         ...current,
@@ -41,6 +50,7 @@ function settings(): SceneVideoSettings {
             openrouter: { ...DEFAULT_SETTINGS.backends.openrouter, ...current.backends?.openrouter },
             wavespeed: { ...DEFAULT_SETTINGS.backends.wavespeed, ...current.backends?.wavespeed },
         },
+        looks,
     };
     migratePrompts(all[MODULE]);
     return all[MODULE];
@@ -48,10 +58,30 @@ function settings(): SceneVideoSettings {
 
 const save = () => ctx().saveSettingsDebounced();
 
+// Settings from before camera and audio modes: a single style/negative pair and an audio checkbox.
+function migrateLegacyFields(current: any) {
+    if (typeof current.styleSuffix === 'string' || typeof current.negativePrompt === 'string') {
+        const look = { ...CAMERA_MODES.bystander.look };
+        if (typeof current.styleSuffix === 'string') look.style = current.styleSuffix;
+        if (typeof current.negativePrompt === 'string' && !LEGACY_NEGATIVE_HASHES.includes(promptHash(current.negativePrompt))) {
+            look.negative = current.negativePrompt;
+        }
+        current.looks = { ...current.looks, bystander: { ...look, ...current.looks?.bystander } };
+        delete current.styleSuffix;
+        delete current.negativePrompt;
+    }
+    if (typeof current.audio === 'boolean') {
+        current.audioMode ??= current.audio ? 'full' : 'none';
+        delete current.audio;
+    }
+}
+
+const look = (s: SceneVideoSettings) => s.looks[s.cameraMode] ?? CAMERA_MODES.bystander.look;
+
 // Replaces prompts that still equal an earlier default; customized prompts are kept.
 function migratePrompts(s: SceneVideoSettings) {
     if ((s.promptsVersion ?? 1) >= PROMPTS_VERSION) return;
-    const latest = { systemPrompt: DEFAULT_SYSTEM_PROMPT, systemPromptH3: DEFAULT_SYSTEM_PROMPT_H3, negativePrompt: DEFAULT_NEGATIVE };
+    const latest = { systemPrompt: DEFAULT_SYSTEM_PROMPT, systemPromptH3: DEFAULT_SYSTEM_PROMPT_H3 };
     for (const key of Object.keys(LEGACY_PROMPT_HASHES) as (keyof typeof LEGACY_PROMPT_HASHES)[]) {
         if (LEGACY_PROMPT_HASHES[key].includes(promptHash(s[key]))) {
             s[key] = latest[key];
@@ -76,7 +106,7 @@ function truncate(text: string, max: number): string {
     return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-function buildSceneContext(messageId: number, s: SceneVideoSettings): string {
+function buildSceneContext(messageId: number, s: SceneVideoSettings, focus?: string): string {
     const c = ctx();
     const parts: string[] = [];
 
@@ -98,7 +128,12 @@ function buildSceneContext(messageId: number, s: SceneVideoSettings): string {
     if (history.length) parts.push(`[Earlier messages]\n${history.join('\n\n')}`);
 
     const target = c.chat[messageId];
-    parts.push(`[LAST message — film this moment]\n${target.name}: ${truncate(cleanText(target.mes), 4000)}`);
+    if (focus) {
+        parts.push(`[LAST message]\n${target.name}: ${truncate(cleanText(target.mes), 4000)}`);
+        parts.push(`[FOCUS: the user selected this fragment of the last message. The clip must show exactly this moment; use the rest only as context]\n${truncate(focus, 1500)}`);
+    } else {
+        parts.push(`[LAST message — film this moment]\n${target.name}: ${truncate(cleanText(target.mes), 4000)}`);
+    }
     return parts.join('\n\n');
 }
 
@@ -137,19 +172,32 @@ function normalizeH3Prompt(text: string): string {
 }
 
 function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean): string {
-    const shots = shotRule(s.shotMode, h3, s.seconds);
-    // Custom prompts written before {{shots}} existed still get the rule.
-    const withShots = template.includes('{{shots}}') ? template : `${template}\n\nShots: ${shots}`;
-    return withShots
-        .replaceAll('{{shots}}', shots)
+    const camera = CAMERA_MODES[s.cameraMode] ?? CAMERA_MODES.bystander;
+    const audio = AUDIO_MODES[s.audioMode] ?? AUDIO_MODES.full;
+    const rules: Record<string, string> = {
+        shots: shotRule(s.shotMode, h3, s.seconds),
+        camera: camera.rule,
+        audio: h3 ? audio.h3 : audio.generic,
+        music: camera.music,
+    };
+    // Custom prompts written before a placeholder existed still get its rule, appended at the end.
+    let text = template;
+    for (const [key, value] of Object.entries(rules)) {
+        if (key === 'music' && !h3) continue;
+        text = text.includes(`{{${key}}}`)
+            ? text.replaceAll(`{{${key}}}`, value)
+            : `${text}\n\n${key[0].toUpperCase()}${key.slice(1)}: ${value}`;
+    }
+    return text
+        .replaceAll('{{user}}', ctx().name1 || 'the user')
         .replaceAll('{{words}}', String(Math.min(260, Math.max(80, Math.round(s.seconds * 20)))))
         .replaceAll('{{seconds}}', String(s.seconds))
         .replaceAll('{{aspect}}', s.aspect)
-        .replaceAll('{{style}}', s.styleSuffix.trim() || 'Realistic live-action footage.');
+        .replaceAll('{{style}}', look(s).style.trim() || 'Realistic live-action footage.');
 }
 
 // Prompt review popup with a Regenerate button that asks the LLM for a new prompt without closing.
-async function reviewPrompt(messageId: number, prompt: string, note: string, isH3: boolean): Promise<string | null> {
+async function reviewPrompt(messageId: number, prompt: string, note: string, isH3: boolean, focus?: string): Promise<string | null> {
     const c = ctx();
     let busy = false;
     let closed = false;
@@ -165,7 +213,7 @@ async function reviewPrompt(messageId: number, prompt: string, note: string, isH
         input.disabled = true;
         if (label) label.textContent = 'Regenerating…';
         try {
-            const next = await writeVideoPrompt(messageId, settings());
+            const next = await writeVideoPrompt(messageId, settings(), focus);
             if (!closed) input.value = next;
         } catch (error: any) {
             toastr.error(String(error?.message ?? error), 'Scene Video');
@@ -190,13 +238,13 @@ async function reviewPrompt(messageId: number, prompt: string, note: string, isH
     return value ? String(value) : null;
 }
 
-async function writeVideoPrompt(messageId: number, s: SceneVideoSettings): Promise<string> {
+async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string): Promise<string> {
     const c = ctx();
     const format = resolvePromptFormat(s);
     const template = format === 'minimax-h3' ? s.systemPromptH3 : s.systemPrompt;
     const raw = await c.generateRaw({
         systemPrompt: applyTemplate(template, s, format === 'minimax-h3'),
-        prompt: `${buildSceneContext(messageId, s)}\n\nWrite the video prompt now.`,
+        prompt: `${buildSceneContext(messageId, s, focus)}\n\nWrite the video prompt now.`,
         responseLength: s.responseLength,
     });
 
@@ -209,7 +257,8 @@ async function writeVideoPrompt(messageId: number, s: SceneVideoSettings): Promi
 /** The generic format gets the style suffix appended. H3 has the style inside [Shot 1]. */
 function buildFinalPrompt(prompt: string, s: SceneVideoSettings): string {
     if (resolvePromptFormat(s) === 'minimax-h3') return prompt;
-    return s.styleSuffix.trim() ? `${prompt}\n\n${s.styleSuffix.trim()}` : prompt;
+    const style = look(s).style.trim();
+    return style ? `${prompt}\n\n${style}` : prompt;
 }
 
 // ---------- media ----------
@@ -258,6 +307,8 @@ interface RunOptions {
     prompt?: string;
     /** Skip the review popup. */
     quiet?: boolean;
+    /** Fragment of the message to film instead of letting the LLM choose. */
+    focus?: string;
 }
 
 export async function generateSceneVideo(messageId: number, opts: RunOptions = {}): Promise<string> {
@@ -275,9 +326,10 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
 
     try {
         let prompt = opts.prompt?.trim();
+        const focus = opts.focus?.trim() || undefined;
         if (!prompt) {
-            toast = toastr.info('Writing the video prompt…', 'Scene Video', { timeOut: 0, extendedTimeOut: 0 });
-            prompt = await writeVideoPrompt(messageId, s);
+            toast = toastr.info(focus ? 'Writing the video prompt for the selected fragment…' : 'Writing the video prompt…', 'Scene Video', { timeOut: 0, extendedTimeOut: 0 });
+            prompt = await writeVideoPrompt(messageId, s, focus);
             toastr.clear(toast);
         }
 
@@ -286,7 +338,9 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
             const note = isH3
                 ? 'MiniMax H3 structured format. Keep the three fields and the <code>&lt;d&gt;</code> tags.'
                 : 'The style suffix is added automatically.';
-            const edited = await reviewPrompt(messageId, prompt, `${note} Backend: <b>${s.backend}</b>`, isH3);
+            const camera = CAMERA_MODES[s.cameraMode]?.label ?? s.cameraMode;
+            const fragment = focus ? `<br>Selected fragment: <i>«${escapeHtml(truncate(focus, 300))}»</i>` : '';
+            const edited = await reviewPrompt(messageId, prompt, `${note} Backend: <b>${s.backend}</b>, camera: <b>${camera}</b>.${fragment}`, isH3, focus);
             if (edited === null || edited === undefined || !String(edited).trim()) {
                 return '';
             }
@@ -296,7 +350,7 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
         const finalPrompt = buildFinalPrompt(prompt, s);
         toast = toastr.info('Generating the video. This usually takes 1–5 minutes.', 'Scene Video', { timeOut: 0, extendedTimeOut: 0 });
 
-        const video = await generateVideo({ prompt: finalPrompt, negative: s.negativePrompt, settings: s, signal: controller.signal });
+        const video = await generateVideo({ prompt: finalPrompt, negative: look(s).negative, settings: s, signal: controller.signal });
         const url = await uploadVideo(video.data, video.format);
         toastr.clear(toast);
 
@@ -334,12 +388,45 @@ async function onButtonClick(this: HTMLElement) {
         if (ok) active.abort();
         return;
     }
-    generateSceneVideo(messageId).catch(() => { /* already reported */ });
+    generateSceneVideo(messageId, { focus: takeSelection(messageId) }).catch(() => { /* already reported */ });
+}
+
+// ---------- selected fragment ----------
+
+// Opening the message menu clears the text selection, so the last selection inside a message is kept
+// until the user clicks somewhere other than that message's buttons.
+let lastSelection: { messageId: number; text: string } | null = null;
+
+function trackSelection() {
+    document.addEventListener('selectionchange', () => {
+        const sel = window.getSelection();
+        const text = sel?.toString().trim();
+        if (!sel || !text || !sel.anchorNode || !sel.focusNode) return;
+        const anchor = $(sel.anchorNode).closest('#chat .mes .mes_text');
+        const focus = $(sel.focusNode).closest('#chat .mes .mes_text');
+        if (!anchor.length || anchor[0] !== focus[0]) return;
+        const messageId = Number(anchor.closest('.mes').attr('mesid'));
+        if (!Number.isNaN(messageId)) lastSelection = { messageId, text };
+    });
+    document.addEventListener('pointerdown', (event) => {
+        if (!lastSelection) return;
+        const target = $(event.target as HTMLElement);
+        const mes = target.closest('#chat .mes');
+        const onOwnButtons = Number(mes.attr('mesid')) === lastSelection.messageId && target.closest('.mes_buttons, .extraMesButtons').length > 0;
+        if (!onOwnButtons) lastSelection = null;
+    }, true);
+}
+
+function takeSelection(messageId: number): string | undefined {
+    const current = window.getSelection()?.toString().trim();
+    const text = lastSelection?.messageId === messageId ? lastSelection.text : undefined;
+    lastSelection = null;
+    return text || current || undefined;
 }
 
 // ---------- message button ----------
 
-const BUTTON_HTML = `<div title="Generate scene video" class="mes_button ${BUTTON_CLASS} fa-solid fa-video" data-i18n="[title]Generate scene video"></div>`;
+const BUTTON_HTML = `<div title="Generate scene video (select text in the message first to film just that fragment)" class="mes_button ${BUTTON_CLASS} fa-solid fa-video"></div>`;
 
 function syncButtons() {
     const show = settings().enabled;
@@ -497,6 +584,14 @@ async function showOpenRouterModels() {
     }
 }
 
+function renderLook() {
+    const s = settings();
+    const l = look(s);
+    $('#scene_video_style').val(l.style);
+    $('#scene_video_negative').val(l.negative);
+    $('#scene_video_look_camera').text(CAMERA_MODES[s.cameraMode]?.label ?? s.cameraMode);
+}
+
 function initSettingsUI() {
     const s = settings();
     const container = $('#extensions_settings2').length ? $('#extensions_settings2') : $('#extensions_settings');
@@ -506,19 +601,19 @@ function initSettingsUI() {
     $('#scene_video_confirm').prop('checked', s.confirmPrompt);
     $('#scene_video_auto').prop('checked', s.autoGenerate);
     $('#scene_video_backend').val(s.backend);
-    $('#scene_video_audio').prop('checked', s.audio);
     $('#scene_video_comfy_url').val(s.comfyUrl);
     $('#scene_video_comfy_fps').val(s.comfyFps);
     $('#scene_video_seconds').val(s.seconds);
     $('#scene_video_aspect').val(s.aspect);
     $('#scene_video_shots').val(s.shotMode);
+    $('#scene_video_camera').val(s.cameraMode);
+    $('#scene_video_audio_mode').val(s.audioMode);
     $('#scene_video_context').val(s.contextMessages);
     $('#scene_video_response_length').val(s.responseLength);
     $('#scene_video_system').val(s.systemPrompt);
     $('#scene_video_format').val(s.promptFormat);
     $('#scene_video_system_h3').val(s.systemPromptH3);
-    $('#scene_video_style').val(s.styleSuffix);
-    $('#scene_video_negative').val(s.negativePrompt);
+    renderLook();
 
     bindInput('#scene_video_enabled', (_v, c) => { settings().enabled = c; syncButtons(); });
     bindInput('#scene_video_confirm', (_v, c) => { settings().confirmPrompt = c; });
@@ -545,18 +640,19 @@ function initSettingsUI() {
     bindInput('#scene_video_system_h3', v => { settings().systemPromptH3 = v; });
     bindInput('#scene_video_resolution', v => { cloudCfg().resolution = v.trim(); });
     bindInput('#scene_video_extra', v => { cloudCfg().extra = v; });
-    bindInput('#scene_video_audio', (_v, c) => { settings().audio = c; });
     bindInput('#scene_video_comfy_url', v => { settings().comfyUrl = v.trim(); });
     bindInput('#scene_video_comfy_workflow', v => { settings().comfyWorkflow = v; });
     bindInput('#scene_video_comfy_fps', v => { settings().comfyFps = Number(v) || 24; });
     bindInput('#scene_video_seconds', v => { settings().seconds = Number(v) || DEFAULT_SETTINGS.seconds; });
     bindInput('#scene_video_aspect', v => { settings().aspect = v as SceneVideoSettings['aspect']; });
     bindInput('#scene_video_shots', v => { settings().shotMode = v as ShotMode; });
+    bindInput('#scene_video_camera', v => { settings().cameraMode = v as CameraMode; renderLook(); });
+    bindInput('#scene_video_audio_mode', v => { settings().audioMode = v as AudioMode; });
     bindInput('#scene_video_context', v => { settings().contextMessages = Math.max(0, Number(v) || 0); });
     bindInput('#scene_video_response_length', v => { settings().responseLength = Number(v) || DEFAULT_SETTINGS.responseLength; });
     bindInput('#scene_video_system', v => { settings().systemPrompt = v; });
-    bindInput('#scene_video_style', v => { settings().styleSuffix = v; });
-    bindInput('#scene_video_negative', v => { settings().negativePrompt = v; });
+    bindInput('#scene_video_style', v => { look(settings()).style = v; });
+    bindInput('#scene_video_negative', v => { look(settings()).negative = v; });
 
     $('#scene_video_comfy_refresh').on('click', refreshComfyWorkflows);
     $('#scene_video_or_models').on('click', showOpenRouterModels);
@@ -576,12 +672,10 @@ function initSettingsUI() {
         const st = settings();
         st.systemPrompt = DEFAULT_SYSTEM_PROMPT;
         st.systemPromptH3 = DEFAULT_SYSTEM_PROMPT_H3;
-        st.styleSuffix = DEFAULT_STYLE_SUFFIX;
-        st.negativePrompt = DEFAULT_NEGATIVE;
+        st.looks = defaultLooks();
         $('#scene_video_system').val(st.systemPrompt);
         $('#scene_video_system_h3').val(st.systemPromptH3);
-        $('#scene_video_style').val(st.styleSuffix);
-        $('#scene_video_negative').val(st.negativePrompt);
+        renderLook();
         save();
     });
 
@@ -602,10 +696,12 @@ function registerSlashCommand() {
             return await generateSceneVideo(id, {
                 prompt: args.prompt ? String(args.prompt) : undefined,
                 quiet: String(args.quiet) === 'true',
+                focus: args.focus ? String(args.focus) : undefined,
             });
         },
         namedArgumentList: [
             SlashCommandNamedArgument.fromProps({ name: 'prompt', description: 'Ready video prompt (skips the LLM step)', typeList: ['string'] }),
+            SlashCommandNamedArgument.fromProps({ name: 'focus', description: 'Fragment of the message to film; the LLM builds the clip around it', typeList: ['string'] }),
             SlashCommandNamedArgument.fromProps({ name: 'quiet', description: 'Skip the prompt review popup', typeList: ['bool'], defaultValue: 'false' }),
         ],
         unnamedArgumentList: [
@@ -623,6 +719,7 @@ function init() {
     initSettingsUI();
     syncButtons();
     registerSlashCommand();
+    trackSelection();
 
     $(document).on('click', `.${BUTTON_CLASS}`, onButtonClick);
 
