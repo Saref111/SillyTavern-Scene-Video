@@ -21,20 +21,21 @@
             <div id="scene_video_plugin_status" class="scene-video-hint"></div>
 
             <div class="scene-video-cloud">
-                <label for="scene_video_model">Model</label>
-                <input id="scene_video_model" class="text_pole" list="scene_video_models" placeholder="model id" />
-                <datalist id="scene_video_models"></datalist>
+                <label for="scene_video_model_select">Model</label>
+                <select id="scene_video_model_select" class="text_pole"></select>
+                <input id="scene_video_model" class="text_pole" placeholder="custom model id, e.g. wavespeed-ai/minimax-h3/text-to-video" />
 
-                <label for="scene_video_resolution">Resolution <small>(empty = model default)</small></label>
-                <input id="scene_video_resolution" class="text_pole" list="scene_video_resolutions" placeholder="e.g. 768p" />
-                <datalist id="scene_video_resolutions">
-                    <option value="480p"></option>
-                    <option value="540p"></option>
-                    <option value="720p"></option>
-                    <option value="768p"></option>
-                    <option value="1080p"></option>
-                    <option value="2K"></option>
-                </datalist>
+                <label for="scene_video_resolution">Resolution</label>
+                <select id="scene_video_resolution" class="text_pole">
+                    <option value="">Model default</option>
+                    <option value="480p">480p</option>
+                    <option value="540p">540p</option>
+                    <option value="720p">720p</option>
+                    <option value="768p">768p</option>
+                    <option value="1080p">1080p</option>
+                    <option value="2K">2K</option>
+                    <option value="4K">4K</option>
+                </select>
 
                 <label for="scene_video_extra">Extra params (JSON) <small>— merged into the request; <code>null</code> removes a field</small></label>
                 <textarea id="scene_video_extra" class="text_pole" rows="2" placeholder='{"seed": 42}'></textarea>

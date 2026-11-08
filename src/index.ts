@@ -8,8 +8,11 @@ import {
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_SYSTEM_PROMPT_H3,
     H3_MODEL_PATTERN,
+    LEGACY_PROMPT_HASHES,
     MODEL_SUGGESTIONS,
     PromptFormat,
+    promptHash,
+    PROMPTS_VERSION,
     SceneVideoSettings,
 } from './defaults';
 import { generateVideo, getPluginStatus, listComfyWorkflows, PLUGIN_BASE, saveWaveSpeedKey } from './backends';
@@ -37,10 +40,24 @@ function settings(): SceneVideoSettings {
             wavespeed: { ...DEFAULT_SETTINGS.backends.wavespeed, ...current.backends?.wavespeed },
         },
     };
+    migratePrompts(all[MODULE]);
     return all[MODULE];
 }
 
 const save = () => ctx().saveSettingsDebounced();
+
+// Replaces prompts that still equal an earlier default; customized prompts are kept.
+function migratePrompts(s: SceneVideoSettings) {
+    if ((s.promptsVersion ?? 1) >= PROMPTS_VERSION) return;
+    const latest = { systemPrompt: DEFAULT_SYSTEM_PROMPT, systemPromptH3: DEFAULT_SYSTEM_PROMPT_H3, negativePrompt: DEFAULT_NEGATIVE };
+    for (const key of Object.keys(LEGACY_PROMPT_HASHES) as (keyof typeof LEGACY_PROMPT_HASHES)[]) {
+        if (LEGACY_PROMPT_HASHES[key].includes(promptHash(s[key]))) {
+            s[key] = latest[key];
+        }
+    }
+    s.promptsVersion = PROMPTS_VERSION;
+    save();
+}
 
 // ---------- prompt building ----------
 
@@ -330,16 +347,64 @@ function renderBackendSection() {
 
     if (b !== 'comfy') {
         const cfg = s.backends[b];
-        $('#scene_video_model').val(cfg.model);
-        $('#scene_video_resolution').val(cfg.resolution);
+        renderModelSelect();
+        setSelectValue('#scene_video_resolution', cfg.resolution);
         $('#scene_video_extra').val(cfg.extra);
-        const list = $('#scene_video_models').empty();
-        for (const m of MODEL_SUGGESTIONS[b]) list.append($('<option></option>').val(m));
+        if (b === 'openrouter') loadOpenRouterModels();
     } else {
         refreshComfyWorkflows();
     }
     refreshPluginStatus();
     renderPromptFormat();
+}
+
+const CUSTOM_MODEL = '__custom__';
+
+/** Video models fetched from OpenRouter. Null until loaded, then cached for the session. */
+let openRouterModels: string[] | null = null;
+let openRouterModelsLoading = false;
+
+/** Sets a <select> value and adds the option if it isn't in the list (e.g. a value saved earlier). */
+function setSelectValue(selector: string, value: string) {
+    const select = $(selector);
+    if (value && !select.find('option').filter((_i: number, o: HTMLOptionElement) => o.value === value).length) {
+        select.append($('<option></option>').val(value).text(value));
+    }
+    select.val(value);
+}
+
+function renderModelSelect() {
+    const s = settings();
+    if (s.backend === 'comfy') return;
+    const current = s.backends[s.backend].model;
+    const known = s.backend === 'openrouter' && openRouterModels?.length
+        ? [...new Set([...MODEL_SUGGESTIONS.openrouter, ...openRouterModels])]
+        : MODEL_SUGGESTIONS[s.backend];
+
+    const select = $('#scene_video_model_select').empty();
+    for (const id of known) select.append($('<option></option>').val(id).text(id));
+    select.append($('<option></option>').val(CUSTOM_MODEL).text('Custom…'));
+
+    const isKnown = known.includes(current);
+    select.val(isKnown ? current : CUSTOM_MODEL);
+    $('#scene_video_model').val(current).toggle(!isKnown);
+}
+
+async function loadOpenRouterModels() {
+    if (openRouterModels || openRouterModelsLoading) return;
+    openRouterModelsLoading = true;
+    try {
+        const res = await fetch(`${PLUGIN_BASE}/openrouter/models`, { method: 'POST', headers: ctx().getRequestHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        const models: any[] = data.data ?? data;
+        openRouterModels = models.map(m => String(m.id)).filter(Boolean).sort();
+        if (settings().backend === 'openrouter') renderModelSelect();
+    } catch (error) {
+        console.warn('[Scene Video] Could not load OpenRouter models', error);
+    } finally {
+        openRouterModelsLoading = false;
+    }
 }
 
 function renderPromptFormat() {
@@ -417,6 +482,18 @@ function initSettingsUI() {
         settings().backend = this.value as BackendId;
         save();
         renderBackendSection();
+    });
+    $('#scene_video_model_select').on('change', function (this: HTMLSelectElement) {
+        const custom = this.value === CUSTOM_MODEL;
+        const input = $('#scene_video_model').toggle(custom);
+        if (custom) {
+            input.trigger('focus');
+            return;
+        }
+        cloudCfg().model = this.value;
+        input.val(this.value);
+        save();
+        renderPromptFormat();
     });
     bindInput('#scene_video_model', v => { cloudCfg().model = v.trim(); renderPromptFormat(); });
     bindInput('#scene_video_format', v => { settings().promptFormat = v as PromptFormat; renderPromptFormat(); });
