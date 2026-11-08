@@ -8,7 +8,7 @@ How it works:
 
 1. Click 🎥 in a message's menu, or run `/scenevideo`.
 2. Your current SillyTavern LLM rewrites the message as a prompt for a video model. It uses the character description, your persona and a few earlier messages for context. Names are replaced with descriptions of appearance, because video models don't know who the characters are.
-3. You can review and edit the prompt. The "smartphone footage" style is added for you.
+3. You can review and edit the prompt, or click **Regenerate** for a new one. The "smartphone footage" style is added for you.
 4. The clip is generated with **OpenRouter**, **WaveSpeed** or **ComfyUI**. It is saved to `data/<user>/user/images/<character>/` and attached to the message.
 
 The default model is **MiniMax H3**:
@@ -75,13 +75,40 @@ With **Prompt format → Auto**, the extension switches to this format whenever 
 
 How the H3 format is handled:
 
-- The LLM instruction is a condensed version of the guide, adapted to phone footage. The clip is one continuous shot with a handheld camera (`shakes slightly`, `POV`, `tracking`), and speakers get IDs `(S1)`, `(S2)`.
+- The LLM instruction is a condensed version of the guide, adapted to phone footage: a handheld camera (`shakes slightly`, `POV`, `tracking`), one or several shots depending on **Shots**, and speaker IDs `(S1)`, `(S2)`.
 - The person filming is off-screen.
 - Dialogue is copied from the scene word for word, in its original language, with a tag such as `[English]` or `[Ukrainian]`.
 - The style goes at the start of `[Shot 1]` (the `{{style}}` placeholder). It is not appended at the end, which would break the structure.
 - `non_diegetic_music` is `N/A`, because amateur footage has no background score.
 - The LLM output is cleaned up: preambles, code fences and `**bold**` field names are removed, and a missing `non_diegetic_music` field is added.
 - No negative prompt is sent, because H3 doesn't support one.
+
+## Prompt settings
+
+**Shots** sets how the clip is cut:
+
+| Option | What the LLM writes |
+|---|---|
+| One continuous shot (default) | a single shot with no cuts; the phone moves to change distance or angle |
+| Several shots | 2–4 short shots, like phone recordings joined together; each one is a different moment, place or angle |
+| Let the LLM decide | one shot when the moments flow into each other in one place, several when they are apart in time or place |
+
+The number of shots depends on the duration: up to 3 for 6 s, up to 4 for 8 s or more. Each shot lasts at least about 2 seconds. H3 prompts use `[Shot 2] At 00:03.500, ...`; other models get `Cut to:`.
+
+**Regenerate** in the prompt review popup asks the LLM for a new prompt without closing the popup. It uses the current settings, so you can change **Shots** and regenerate right away.
+
+The LLM picks the 1–3 moments of the message that matter most. The instruction keeps the prompt short and lively: about 20 words per second of video, at most two people in focus with their faces toward the camera, one clear change of emotion per person, and big whole-body actions instead of small details. Long, detailed prompts make video models produce calm, almost still clips.
+
+Placeholders in the instructions:
+
+| Placeholder | Value |
+|---|---|
+| `{{seconds}}` | clip duration |
+| `{{words}}` | word budget for the description (20 per second, 80–260) |
+| `{{shots}}` | the rule for the selected **Shots** option |
+| `{{aspect}}`, `{{style}}` | aspect ratio and style (H3 only) |
+
+If a custom instruction has no `{{shots}}`, the rule is appended at the end. Default instructions are upgraded automatically after an update; edited ones are kept, so add new placeholders yourself or click **Restore default prompts**.
 
 ## Slash command
 
