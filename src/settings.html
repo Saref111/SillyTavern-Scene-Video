@@ -85,6 +85,12 @@
                     </select>
                 </div>
             </div>
+            <label for="scene_video_shots">Shots</label>
+            <select id="scene_video_shots" class="text_pole">
+                <option value="single">One continuous shot</option>
+                <option value="multi">Several shots (cuts between moments)</option>
+                <option value="auto">Let the LLM decide</option>
+            </select>
 
             <hr />
             <b>Prompt</b>
@@ -107,11 +113,11 @@
             <small id="scene_video_format_status" class="scene-video-hint"></small>
 
             <div id="scene_video_system_generic_block">
-                <label for="scene_video_system">Instruction for the LLM: generic <small>({{seconds}} is replaced)</small></label>
+                <label for="scene_video_system">Instruction for the LLM: generic <small>({{seconds}}, {{words}}, {{shots}} are replaced)</small></label>
                 <textarea id="scene_video_system" class="text_pole" rows="8"></textarea>
             </div>
             <div id="scene_video_system_h3_block">
-                <label for="scene_video_system_h3">Instruction for the LLM: MiniMax H3 <small>({{seconds}}, {{aspect}}, {{style}} are replaced; based on the <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noopener">official guide</a>)</small></label>
+                <label for="scene_video_system_h3">Instruction for the LLM: MiniMax H3 <small>({{seconds}}, {{words}}, {{aspect}}, {{style}}, {{shots}} are replaced; based on the <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noopener">official guide</a>)</small></label>
                 <textarea id="scene_video_system_h3" class="text_pole" rows="12"></textarea>
             </div>
             <label for="scene_video_style">Style <small>(appended to generic prompts; inserted into [Shot 1] for H3)</small></label>

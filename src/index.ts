@@ -14,6 +14,8 @@ import {
     promptHash,
     PROMPTS_VERSION,
     SceneVideoSettings,
+    ShotMode,
+    shotRule,
 } from './defaults';
 import { generateVideo, getPluginStatus, listComfyWorkflows, PLUGIN_BASE, saveWaveSpeedKey } from './backends';
 
@@ -134,11 +136,58 @@ function normalizeH3Prompt(text: string): string {
     return out;
 }
 
-function applyTemplate(template: string, s: SceneVideoSettings): string {
-    return template
+function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean): string {
+    const shots = shotRule(s.shotMode, h3, s.seconds);
+    // Custom prompts written before {{shots}} existed still get the rule.
+    const withShots = template.includes('{{shots}}') ? template : `${template}\n\nShots: ${shots}`;
+    return withShots
+        .replaceAll('{{shots}}', shots)
+        .replaceAll('{{words}}', String(Math.min(260, Math.max(80, Math.round(s.seconds * 20)))))
         .replaceAll('{{seconds}}', String(s.seconds))
         .replaceAll('{{aspect}}', s.aspect)
         .replaceAll('{{style}}', s.styleSuffix.trim() || 'Realistic live-action footage.');
+}
+
+// Prompt review popup with a Regenerate button that asks the LLM for a new prompt without closing.
+async function reviewPrompt(messageId: number, prompt: string, note: string, isH3: boolean): Promise<string | null> {
+    const c = ctx();
+    let busy = false;
+    let closed = false;
+    // eslint-disable-next-line prefer-const
+    let popup: any;
+    const regenerate = async (event: Event) => {
+        if (busy) return;
+        busy = true;
+        const button = event.currentTarget as HTMLElement;
+        const label = button.querySelector('span');
+        const input: HTMLTextAreaElement = popup.mainInput;
+        button.classList.add('disabled');
+        input.disabled = true;
+        if (label) label.textContent = 'Regenerating…';
+        try {
+            const next = await writeVideoPrompt(messageId, settings());
+            if (!closed) input.value = next;
+        } catch (error: any) {
+            toastr.error(String(error?.message ?? error), 'Scene Video');
+        } finally {
+            busy = false;
+            button.classList.remove('disabled');
+            input.disabled = false;
+            if (label) label.textContent = 'Regenerate';
+        }
+    };
+    popup = new c.Popup(`<h3>Video prompt</h3>${note}`, c.POPUP_TYPE.INPUT, prompt, {
+        rows: isH3 ? 18 : 10,
+        okButton: 'Generate',
+        cancelButton: 'Cancel',
+        wide: true,
+        customButtons: [{ text: 'Regenerate', icon: 'fa-rotate', tooltip: 'Ask the LLM for a new prompt', action: regenerate }],
+        onClosing: () => !busy || confirm('The prompt is still being regenerated. Close anyway?'),
+        onClose: () => { closed = true; },
+    });
+    const value = await popup.show();
+    if (value === '') return '';
+    return value ? String(value) : null;
 }
 
 async function writeVideoPrompt(messageId: number, s: SceneVideoSettings): Promise<string> {
@@ -146,7 +195,7 @@ async function writeVideoPrompt(messageId: number, s: SceneVideoSettings): Promi
     const format = resolvePromptFormat(s);
     const template = format === 'minimax-h3' ? s.systemPromptH3 : s.systemPrompt;
     const raw = await c.generateRaw({
-        systemPrompt: applyTemplate(template, s),
+        systemPrompt: applyTemplate(template, s, format === 'minimax-h3'),
         prompt: `${buildSceneContext(messageId, s)}\n\nWrite the video prompt now.`,
         responseLength: s.responseLength,
     });
@@ -237,12 +286,7 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
             const note = isH3
                 ? 'MiniMax H3 structured format. Keep the three fields and the <code>&lt;d&gt;</code> tags.'
                 : 'The style suffix is added automatically.';
-            const edited = await c.Popup.show.input(
-                'Video prompt',
-                `${note} Backend: <b>${s.backend}</b>`,
-                prompt,
-                { rows: isH3 ? 18 : 10, okButton: 'Generate', cancelButton: 'Cancel', wide: true },
-            );
+            const edited = await reviewPrompt(messageId, prompt, `${note} Backend: <b>${s.backend}</b>`, isH3);
             if (edited === null || edited === undefined || !String(edited).trim()) {
                 return '';
             }
@@ -467,6 +511,7 @@ function initSettingsUI() {
     $('#scene_video_comfy_fps').val(s.comfyFps);
     $('#scene_video_seconds').val(s.seconds);
     $('#scene_video_aspect').val(s.aspect);
+    $('#scene_video_shots').val(s.shotMode);
     $('#scene_video_context').val(s.contextMessages);
     $('#scene_video_response_length').val(s.responseLength);
     $('#scene_video_system').val(s.systemPrompt);
@@ -506,6 +551,7 @@ function initSettingsUI() {
     bindInput('#scene_video_comfy_fps', v => { settings().comfyFps = Number(v) || 24; });
     bindInput('#scene_video_seconds', v => { settings().seconds = Number(v) || DEFAULT_SETTINGS.seconds; });
     bindInput('#scene_video_aspect', v => { settings().aspect = v as SceneVideoSettings['aspect']; });
+    bindInput('#scene_video_shots', v => { settings().shotMode = v as ShotMode; });
     bindInput('#scene_video_context', v => { settings().contextMessages = Math.max(0, Number(v) || 0); });
     bindInput('#scene_video_response_length', v => { settings().responseLength = Number(v) || DEFAULT_SETTINGS.responseLength; });
     bindInput('#scene_video_system', v => { settings().systemPrompt = v; });
