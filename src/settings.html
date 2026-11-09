@@ -108,6 +108,10 @@
 
             <hr />
             <b>Prompt</b>
+            <label for="scene_video_profile">LLM for writing prompts</label>
+            <select id="scene_video_profile" class="text_pole"></select>
+            <small id="scene_video_profile_hint" class="scene-video-hint">A connection profile from Connection Manager. A model that follows instructions well writes better video prompts than a roleplay model.</small>
+            <label class="checkbox_label"><input type="checkbox" id="scene_video_two_step" /> Plan the clip first, then write the prompt (two LLM calls)</label>
             <div class="flex-container">
                 <div class="flex1">
                     <label for="scene_video_context">Context messages</label>
@@ -127,11 +131,11 @@
             <small id="scene_video_format_status" class="scene-video-hint"></small>
 
             <div id="scene_video_system_generic_block">
-                <label for="scene_video_system">Instruction for the LLM: generic <small>({{seconds}}, {{words}}, {{shots}}, {{camera}}, {{audio}}, {{user}} are replaced)</small></label>
+                <label for="scene_video_system">Instruction for the LLM: generic <small>({{seconds}}, {{words}}, {{shots}}, {{camera}}, {{audio}}, {{example}}, {{user}} are replaced)</small></label>
                 <textarea id="scene_video_system" class="text_pole" rows="8"></textarea>
             </div>
             <div id="scene_video_system_h3_block">
-                <label for="scene_video_system_h3">Instruction for the LLM: MiniMax H3 <small>({{seconds}}, {{words}}, {{aspect}}, {{style}}, {{shots}}, {{camera}}, {{audio}}, {{music}}, {{user}} are replaced; based on the <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noopener">official guide</a>)</small></label>
+                <label for="scene_video_system_h3">Instruction for the LLM: MiniMax H3 <small>({{seconds}}, {{words}}, {{aspect}}, {{style}}, {{shots}}, {{camera}}, {{audio}}, {{music}}, {{example}}, {{user}} are replaced; based on the <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noopener">official guide</a>)</small></label>
                 <textarea id="scene_video_system_h3" class="text_pole" rows="12"></textarea>
             </div>
             <label for="scene_video_style">Style for camera <b id="scene_video_look_camera"></b> <small>(appended to generic prompts; inserted into [Shot 1] for H3)</small></label>

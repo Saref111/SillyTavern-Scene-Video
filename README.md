@@ -107,6 +107,12 @@ How the H3 format is handled:
 
 The number of shots depends on the duration: up to 3 for 6 s, up to 4 for 8 s or more. Each shot lasts at least about 2 seconds. H3 prompts use `[Shot 2] At 00:03.500, ...`; other models get `Cut to:`.
 
+**LLM for writing prompts** picks a Connection Manager profile for this step, so the chat can run on one model while prompts are written by another that follows instructions better. **Same as chat** uses the current connection.
+
+**Plan the clip first** (on by default) splits the work into two LLM calls: a short plan (moments, people in focus, the emotional change, 2–3 actions with timing, camera, exact lines, sounds, shots), then the prompt written from that plan. The plan is logged to the browser console as `[Scene Video] plan`.
+
+Each camera has its own example in the instruction (`{{example}}`), for both the H3 and the generic format.
+
 **Regenerate** in the prompt review popup asks the LLM for a new prompt without closing the popup. It uses the current settings, so you can change **Shots** and regenerate right away.
 
 The LLM picks the 1–3 moments of the message that matter most. The instruction keeps the prompt short and lively: about 20 words per second of video, at most two people in focus with their faces toward the camera, one clear change of emotion per person, and big whole-body actions instead of small details. Long, detailed prompts make video models produce calm, almost still clips.
@@ -121,6 +127,7 @@ Placeholders in the instructions:
 | `{{camera}}` | the rule for the selected **Camera** |
 | `{{audio}}` | the rule for the selected **Sound** |
 | `{{music}}` | the background music rule for the selected camera (H3 only) |
+| `{{example}}` | the example prompt for the selected camera; not appended when missing |
 | `{{user}}` | your persona's name |
 | `{{aspect}}`, `{{style}}` | aspect ratio and the selected camera's style (H3 only) |
 

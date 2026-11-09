@@ -17,6 +17,7 @@ import {
     MODEL_SUGGESTIONS,
     PromptFormat,
     promptHash,
+    PLAN_INSTRUCTION,
     PROMPTS_VERSION,
     SceneVideoSettings,
     ShotMode,
@@ -179,7 +180,7 @@ function normalizeH3Prompt(text: string): string {
     return out;
 }
 
-function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean): string {
+function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean, appendMissing = true): string {
     const camera = CAMERA_MODES[s.cameraMode] ?? CAMERA_MODES.bystander;
     const audio = AUDIO_MODES[s.audioMode] ?? AUDIO_MODES.full;
     const rules: Record<string, string> = {
@@ -188,15 +189,18 @@ function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean): st
         audio: h3 ? audio.h3 : audio.generic,
         music: camera.music,
     };
+    const example = h3 ? camera.example.h3 : camera.example.generic;
     // Custom prompts written before a placeholder existed still get its rule, appended at the end.
     let text = template;
     for (const [key, value] of Object.entries(rules)) {
         if (key === 'music' && !h3) continue;
+        if (!appendMissing && !text.includes(`{{${key}}}`)) continue;
         text = text.includes(`{{${key}}}`)
             ? text.replaceAll(`{{${key}}}`, value)
             : `${text}\n\n${key[0].toUpperCase()}${key.slice(1)}: ${value}`;
     }
     return text
+        .replaceAll('{{example}}', example)
         .replaceAll('{{user}}', ctx().name1 || 'the user')
         .replaceAll('{{words}}', String(Math.min(260, Math.max(80, Math.round(s.seconds * 20)))))
         .replaceAll('{{seconds}}', String(s.seconds))
@@ -246,19 +250,43 @@ async function reviewPrompt(messageId: number, prompt: string, note: string, isH
     return value ? String(value) : null;
 }
 
-async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string): Promise<string> {
+/** Sends one system + user request, through the chosen connection profile or the current chat connection. */
+async function callLlm(s: SceneVideoSettings, system: string, user: string, maxTokens: number): Promise<string> {
     const c = ctx();
+    if (!s.promptProfile) {
+        return c.generateRaw({ systemPrompt: system, prompt: user, responseLength: maxTokens });
+    }
+    const service = c.ConnectionManagerRequestService;
+    if (!service) throw new Error('Connection profiles are not available in this SillyTavern version.');
+    const result = await service.sendRequest(
+        s.promptProfile,
+        [{ role: 'system', content: system }, { role: 'user', content: user }],
+        maxTokens,
+        { stream: false, extractData: true, includePreset: true, includeInstruct: true },
+    );
+    return typeof result === 'string' ? result : String(result?.content ?? '');
+}
+
+async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string): Promise<string> {
     const format = resolvePromptFormat(s);
-    const template = format === 'minimax-h3' ? s.systemPromptH3 : s.systemPrompt;
-    const raw = await c.generateRaw({
-        systemPrompt: applyTemplate(template, s, format === 'minimax-h3'),
-        prompt: `${buildSceneContext(messageId, s, focus)}\n\nWrite the video prompt now.`,
-        responseLength: s.responseLength,
-    });
+    const h3 = format === 'minimax-h3';
+    const system = applyTemplate(h3 ? s.systemPromptH3 : s.systemPrompt, s, h3);
+    const scene = buildSceneContext(messageId, s, focus);
+
+    let plan = '';
+    if (s.twoStep) {
+        const planSystem = applyTemplate(PLAN_INSTRUCTION, s, h3, false) + system;
+        plan = cleanLlmOutput(await callLlm(s, planSystem, `${scene}\n\nWrite the plan now.`, 500));
+        console.debug('[Scene Video] plan', plan);
+    }
+    const task = plan
+        ? `${scene}\n\n[PLAN for this clip]\n${plan}\n\nWrite the video prompt now. Follow the plan and the rules.`
+        : `${scene}\n\nWrite the video prompt now.`;
+    const raw = await callLlm(s, system, task, s.responseLength);
 
     const text = cleanLlmOutput(raw);
     if (!text) throw new Error('The LLM returned an empty video prompt.');
-    if (format === 'minimax-h3') return normalizeH3Prompt(text);
+    if (h3) return normalizeH3Prompt(text);
     return cleanText(text).replace(/^["'«]|["'»]$/g, '').replace(/^(video )?prompt:\s*/i, '').trim();
 }
 
@@ -592,6 +620,30 @@ async function showOpenRouterModels() {
     }
 }
 
+// Connection profiles come from SillyTavern's Connection Manager; the empty option means the chat connection.
+function initProfileSelect() {
+    const service = ctx().ConnectionManagerRequestService;
+    const label = () => $('#scene_video_profile option[value=""]').text('Same as chat (current connection)');
+    try {
+        if (!service) throw new Error('not available');
+        service.handleDropdown('#scene_video_profile', settings().promptProfile, (profile?: { id: string }) => {
+            settings().promptProfile = profile?.id ?? '';
+            save();
+            label();
+        });
+        label();
+        // The saved profile may have been deleted.
+        if (($('#scene_video_profile').val() ?? '') !== settings().promptProfile) {
+            settings().promptProfile = '';
+            save();
+        }
+    } catch {
+        settings().promptProfile = '';
+        $('#scene_video_profile').prop('disabled', true).empty().append('<option value="">Same as chat (current connection)</option>');
+        $('#scene_video_profile_hint').text('Enable the Connection Manager extension to choose a separate LLM for prompts.');
+    }
+}
+
 function renderLook() {
     const s = settings();
     const l = look(s);
@@ -618,6 +670,8 @@ function initSettingsUI() {
     $('#scene_video_audio_mode').val(s.audioMode);
     $('#scene_video_context').val(s.contextMessages);
     $('#scene_video_response_length').val(s.responseLength);
+    $('#scene_video_two_step').prop('checked', s.twoStep);
+    initProfileSelect();
     $('#scene_video_system').val(s.systemPrompt);
     $('#scene_video_format').val(s.promptFormat);
     $('#scene_video_system_h3').val(s.systemPromptH3);
@@ -653,6 +707,7 @@ function initSettingsUI() {
     bindInput('#scene_video_comfy_fps', v => { settings().comfyFps = Number(v) || 24; });
     bindInput('#scene_video_seconds', v => { settings().seconds = Number(v) || DEFAULT_SETTINGS.seconds; });
     bindInput('#scene_video_aspect', v => { look(settings()).aspect = v as Aspect; });
+    bindInput('#scene_video_two_step', (_v, c) => { settings().twoStep = c; });
     bindInput('#scene_video_shots', v => { settings().shotMode = v as ShotMode; });
     bindInput('#scene_video_camera', v => { settings().cameraMode = v as CameraMode; renderLook(); });
     bindInput('#scene_video_audio_mode', v => { settings().audioMode = v as AudioMode; });
