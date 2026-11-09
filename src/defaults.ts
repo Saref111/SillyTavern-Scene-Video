@@ -76,14 +76,18 @@ export const MODEL_SUGGESTIONS: Record<'openrouter' | 'wavespeed', string[]> = {
 // Shared by both instructions. Long, detailed prompts make video models produce calm, almost still clips:
 // many small details average out. Fewer, bigger and clearer actions and emotions work better.
 const ACTION_RULES = `- Decide yourself what to show: read the LAST message and pick the 1–3 moments that matter most and look best on video. It can be the build-up, the peak, a reaction or the aftermath, whatever tells the scene best. Build the clip from them and leave the rest out. If a FOCUS fragment is given, show exactly that moment instead.
+- When the source strongly emphasizes sexualized or exaggerated body/clothing details that are actively visible in the moment (bouncing, jiggling, tight fabric, cleavage, short skirt flashing, thighhigh dig, etc.), keep the most important of those visual details. Do not replace them with vague words like “curvy”.
+- Clothing must stay consistent. When a top, bra, skirt or panties are important, name the garment clearly and keep it present for the whole clip (e.g. "thin white tanktop that stays on", "pink miniskirt", "striped panties"). Avoid phrases that only describe exposure ("spilling out", "barely contained") without also naming the clothing that is doing the containing.
 - Be brief: about {{words}} words for the visual description. Video models turn long, detailed prompts into calm, almost still clips. Fewer, bigger, clearer things make a lively clip.
-- Never use character names: video models do not know them. Describe each person by appearance in ONE short phrase (age range, gender, build, hair, clothing), then move on to what happens. Give the setting one short phrase too.
-- Focus on at most two people, with their faces visible to the camera for most of the clip and as close as the camera allows. Expressions cannot be seen from behind or from far away; when the camera is far, show emotion through big body language. Others get a brief mention or are left out.
+- Never use character names: video models do not know them. Describe each person in focus with a short, distinctive appearance block: age range, gender, build, hair, plus the 2–4 visual details that make them recognizable in the source (a distinctive outfit, color, accessory, hairstyle). Keep it under about 25 words, take the details from the source and invent none. Other people get a few words at most. Give the setting one short phrase too.
+- Focus on at most two people, with their faces visible to the camera for most of the clip and as close as the camera allows. Expressions cannot be seen from behind or from far away; when the camera is far, show emotion through big body language. Others get a brief mention or are left out. When the reaction of onlookers is part of the moment (heads turn, a room falls silent), mention them briefly in the background, for example "several people turn to stare".
 - Give each person in focus ONE clear emotional change, written as a change: "her face shifts from shock to a wide grin", "his smile drops into a scowl", "her eyes well up and her chin trembles". Play emotions big and readable, like an expressive actor: wide-eyed surprise, an open-mouthed laugh, a deep frown, tears, a beaming smile. A static state ("glassy eyes", "lips parted", "a flushed face") is not an emotion on screen; always pair it with a change or a movement. Turn feelings and thoughts from the text into visible behavior: nervous → fidgets and glances away; angry → slams a palm on the table and leans in; happy → laughs and throws the head back.
 - Give the clip 2–3 big, visible actions that use the head, arms and whole body: spins around, jumps up, throws the arms up, leans in fast, pulls back, shoves, hugs, points, slaps the table, stands up. Small details (fingertips, thumbs, jewelry, water drops, fabric) barely move on screen; skip them.
 - Write in chronological order with "then", "as", "a moment later", so the clip has a start, a peak and a reaction, and the action fills all {{seconds}} seconds.
 - Use strong, specific verbs (grabs, spins, flinches, bursts out laughing, shoves, waves). Avoid static verbs (stands, sits, is, looks at, holds) unless something else happens at the same time.
-- People move and gesture while they speak, and the delivery is emotional: shouts, whispers, says through laughter, snaps, sobs. Listeners react visibly: a nod, an eye roll, a step back, a laugh.`;
+- People move and gesture while they speak, and the delivery is emotional: shouts, whispers, says through laughter, snaps, sobs. Listeners react visibly: a nod, an eye roll, a step back, a laugh.
+- Speech timing: in clips up to about 8 seconds, prefer ONE clear spoken line. Two lines need an action or reaction between them. Never merge separate utterances into one line.
+- When the Camera rules allow movement, give the camera one decisive move that sells the peak of the clip: a quick push-in, a whip pan, a jolt.`;
 
 export const DEFAULT_SYSTEM_PROMPT = `You turn a roleplay scene into a prompt for a text-to-video model.
 
@@ -129,7 +133,6 @@ ${ACTION_RULES}
 - Begin [Shot 1] with the Look and the opening composition, for example: "[Shot 1] Live-action, amateur vertical smartphone footage, a handheld medium shot frames ...".
 - Film the moments you chose from the LAST message. {{shots}}
 - Shot syntax: a later shot starts with a strictly increasing cut time inside the clip, such as "[Shot 2] At 00:03.500, the camera cuts to ...". The first shot never has a timestamp.
-- Never use character names, because the model does not know them. Describe each person by concrete appearance: age range, gender, build, hair, clothing.
 - Write camera motion as a natural sentence inside the shot: motion type, then amplitude and speed only when they matter. Motion types: zoom in/out, push in/pull out, pan left/right, truck left/right, tilt up/down, pedestal up/down, arc shot, tracking shot, static shot, shake slightly/strongly, POV, roll clockwise/counterclockwise. Amplitude: "with small amplitude" / "with large amplitude". Speed: "at slow speed" / "at fast speed". Choose motions that fit the Camera rules. Examples: "The camera shakes slightly as the person filming steps back." "The camera pans right with small amplitude at slow speed, revealing the doorway."
 - Speech: every person who speaks, sings or makes an off-screen voice gets a stable ID such as (S1) or (S2), kept across shots. People who never speak get no ID. Two speakers speaking together use (S1,S2). When a speaker first appears, describe who they are and how they sound: age, gender, on- or off-screen, pitch, timbre, speaking rate, accent. Put that description, the ID and the delivery OUTSIDE the tag. Put only the language tag and the spoken words INSIDE it:
   The young woman with a quiet, breathy voice (S1) whispers: <d>[English] I get off at the next station.</d>
@@ -148,10 +151,10 @@ This is background music that only the audience hears. {{music}}
 {{example}}`;
 
 // Hashes of earlier default prompts: settings that still hold one of them are upgraded to the current default.
-export const PROMPTS_VERSION = 8;
+export const PROMPTS_VERSION = 9;
 export const LEGACY_PROMPT_HASHES: Record<'systemPrompt' | 'systemPromptH3', string[]> = {
-    systemPrompt: ['75c0de', '1msuu0p', '1r6wejz', 'm1smbh', '109hgei', '183ln5g', 'j5rg6i'],
-    systemPromptH3: ['1mkyst', '1jsid1g', '1tx33px', 'vvjs39', 'feeo66', '8sspc0', '5ygoy7'],
+    systemPrompt: ['75c0de', '1msuu0p', '1r6wejz', 'm1smbh', '109hgei', '183ln5g', 'j5rg6i', '1bo6l48'],
+    systemPromptH3: ['1mkyst', '1jsid1g', '1tx33px', 'vvjs39', 'feeo66', '8sspc0', '5ygoy7', '1plpb1'],
 };
 /** Earlier default negative prompts (before looks were split by camera mode). */
 export const LEGACY_NEGATIVE_HASHES = ['1s2e4w5', 'aziall'];
@@ -163,11 +166,14 @@ export function promptHash(text: string): string {
 }
 
 /** First step of the two-step mode: the LLM plans the clip before writing the prompt. */
-export const PLAN_INSTRUCTION = `You plan a short video clip before its prompt is written. Read the scene and the prompt-writing rules below, then output ONLY a compact plan in English, under 150 words, with these lines:
+export const PLAN_INSTRUCTION = `You plan a short video clip before its prompt is written. Read the scene and the prompt-writing rules below, then output ONLY a compact plan in English, under 180 words, with these lines:
 Moments: which 1–3 moments of the LAST message (or the FOCUS fragment) the clip shows.
-People: at most two in focus; one short appearance phrase each, where they are and which way they face.
+People: at most two in focus; the distinctive appearance details of each, where they are and which way they face.
+Key visual: the single most important visual moment of the clip.
 Emotion: for each person in focus, the change "from → to".
 Actions: 2–3 big visible actions in order, with rough timing across {{seconds}} seconds.
+Contact: who touches, pushes, catches or falls on whom, and how they end up; or "none".
+Background: whether onlookers are visible and what they do; or "none".
 Camera: framing and movement, following the Camera rules.
 Speech: the line(s) copied word for word from the scene, who says them and how; or "none".
 Sound: the key sounds.
@@ -194,7 +200,7 @@ overall_soundscape: Oil crackles and spits in the pan while a range hood hums lo
 non_diegetic_music: N/A`,
             generic: 'Amateur phone video in a smoky night kitchen: a tall man in his thirties with messy dark hair and a grey hoodie frantically shakes a smoking frying pan, flinches back from spitting oil, then spins toward the camera, his face shifting from panic to wide-eyed embarrassment. He jabs the spatula at the lens and shouts through a cough, "Don\'t film this, it\'s not burnt, it\'s crispy." The phone jolts and zooms in on the blackened pancake as the woman filming laughs off-screen. He throws his head back with a groan, then bursts out laughing and dumps the pancake into the sink. Oil crackles, a range hood hums, close laughter and handling noise.',
         },
-        rule: `Filmed on a smartphone by someone physically present in the scene, a bystander or one of the participants, who stays off-screen. Handheld: slight shake, following the action, small pans and quick zooms. The person filming reacts to what happens: the phone jolts at sudden moments, swings to follow someone, steps closer or back. If they speak, their voice comes from off-screen. ${PHONE_SOUND}`,
+        rule: `Filmed on a smartphone by someone physically present in the scene, a bystander or one of the participants, who stays off-screen. Handheld: slight shake, following the action, small pans and quick zooms. The person filming reacts to what happens: the phone jolts at sudden moments, swings to follow someone, steps closer or back. The phone may start on one angle and then reframe (swing around, step aside, zoom) to catch the main moment. If they speak, their voice comes from off-screen. ${PHONE_SOUND}`,
         music: NO_SCORE,
         look: {
             aspect: '9:16',
@@ -212,7 +218,7 @@ overall_soundscape: Heavy rain drums on the plastic shelter roof and splashes on
 non_diegetic_music: N/A`,
             generic: 'First-person POV phone video at a rainy bus stop at night: a young woman in her twenties with a wet blonde bob and a yellow raincoat spins around toward the camera, her face shifting from annoyance to a huge, surprised grin. She rushes forward, grabs the hand that reaches into frame and shouts straight into the lens, "You actually came!" The camera jolts as she pulls it under the shelter roof. She throws her arms up, shaking water from her sleeves, and laughs as the man holding the phone answers off-screen, "I said I would." Rain drums on the roof, a bus hisses past, close breathless laughter.',
         },
-        rule: `First-person POV: the user's character ({{user}}) films on a smartphone held at their own eye level. People in the scene look and talk straight into the lens, as if to that person. The user's own hands and forearms may appear at the edges of the frame, reaching out, gesturing or touching things, but their face is never seen. The camera moves like a head and body: it turns toward whoever speaks, steps closer, jolts when something sudden happens. If the user speaks, their voice is off-screen and very close to the microphone. ${PHONE_SOUND}`,
+        rule: `First-person POV: the user's character ({{user}}) films on a smartphone held at their own eye level. People in the scene look and talk straight into the lens, as if to that person. The user's own hands and forearms may appear at the edges of the frame, reaching out, gesturing or touching things, but their face is never seen. The camera moves like a head and body: it turns toward whoever speaks or toward the main moment, steps closer, jolts when something sudden happens. If the user speaks, their voice is off-screen and very close to the microphone. ${PHONE_SOUND}`,
         music: NO_SCORE,
         look: {
             aspect: '9:16',
@@ -230,7 +236,7 @@ overall_soundscape: Crowd chatter, clinking cups and a distant brass band fill t
 non_diegetic_music: N/A`,
             generic: 'Front-camera selfie video held at arm\'s length: a man in his late twenties with curly red hair and a green scarf strides through a crowded winter market, face tight with nervous excitement. He turns the phone to show a stall of glowing paper lanterns, swings it back to his face, eyes wide, and whispers fast, "Okay, she\'s right there. Wish me luck." A young woman with dark braids suddenly leans into the frame over his shoulder, and his expression collapses from panic into a sheepish, open-mouthed laugh as the phone wobbles. Crowd chatter, a distant brass band, crunching snow, close breathing.',
         },
-        rule: `Selfie video: the character at the center of the moment films themselves with the phone's front camera held at arm's length, talking and reacting straight into the lens. Their face fills much of the frame with slight wide-angle distortion; others squeeze into the frame, lean in behind them or react in the background. The phone moves with the holder's arm: it bobs as they walk, tilts when they laugh, turns to show someone else, then swings back. ${PHONE_SOUND} The holder's voice is loud and close.`,
+        rule: `Selfie video: the character at the center of the moment films themselves with the phone's front camera held at arm's length, talking and reacting straight into the lens. Their face fills much of the frame with slight wide-angle distortion; others squeeze into the frame, lean in behind them or react in the background. The phone moves with the holder's arm: it bobs as they walk, tilts when they laugh, turns to show someone else, then swings back. The holder is filming while acting, so keep their own movement believable at arm's length (a few steps, a spin in place, a stumble, a jump) instead of running or fighting; other people can do the big actions around them. Prefer the collision or big action to happen to/around the selfie holder rather than the holder running full-speed into someone while holding the phone. ${PHONE_SOUND} The holder's voice is loud and close.`,
         music: NO_SCORE,
         look: {
             aspect: '9:16',
@@ -248,7 +254,7 @@ overall_soundscape: Fluorescent lights buzz, a refrigerator hums, and cans clatt
 non_diegetic_music: N/A`,
             generic: 'Fixed security camera footage from a high ceiling corner, wide shot of a small convenience store at night under flat fluorescent light: a heavyset middle-aged clerk in a red vest dozes behind the counter as a teenage boy in a grey hoodie creeps down the snack aisle. The boy knocks a tower of cans off a shelf; the clerk jolts upright, throws his arms wide and storms around the counter, while the boy freezes, raises both hands and backs away. The clerk shouts, "Pick them up. All of them." The boy drops to his knees and scrambles after the rolling cans. The camera never moves. Buzzing lights, clattering cans, muffled echoing sound.',
         },
-        rule: 'A fixed security camera mounted high in a corner looks down at the scene in a wide shot. Nobody holds it and nobody notices it. The camera never moves: no pans, no zooms, no shake. Faces are small, so show emotion through big, clear body language and movement, and keep everyone in frame. Sound comes from a cheap, distant microphone: muffled voices, room echo, electrical hum.',
+        rule: 'A fixed security camera mounted high in a corner looks down at the scene in a wide shot. Nobody holds it and nobody notices it. The camera never moves: no pans, no zooms, no shake. Faces are small: never rely on facial expressions. Show emotion only through big, clear body language, movement and silhouettes, and keep everyone in frame. Keep speech to one short or shouted line, or none. Sound comes from a cheap, distant microphone: muffled voices, room echo, electrical hum.',
         music: NO_SCORE,
         look: {
             aspect: '16:9',
@@ -337,12 +343,12 @@ export function shotRule(mode: ShotMode, h3: boolean, seconds: number): string {
         switch (mode) {
             case 'single': return 'Use ONE continuous shot: a single [Shot 1] with no cuts. To change distance or angle, use camera motion instead of a cut.';
             case 'multi': return `Use ${range} shots, like separate recordings joined together: each shot is a different moment, place or angle, with its own opening composition, actions and camera motion. Give each shot at least about 2 seconds. Keep people's descriptions and speaker IDs consistent across shots.`;
-            case 'auto': return `Decide the number of shots yourself: ONE continuous shot ([Shot 1] only) when the moments happen in one place and flow into each other, or ${range} shots, like separate recordings joined together, when they are separated in time or place. Give each shot at least about 2 seconds. Keep people's descriptions and speaker IDs consistent across shots.`;
+            case 'auto': return `Decide the number of shots yourself: ONE continuous shot ([Shot 1] only) when the moments happen in one place and flow into each other, or ${range} shots, like separate recordings joined together, when they are separated in time or place or when a clear setup → peak → reaction reads better with cuts. Give each shot at least about 2 seconds. Keep people's descriptions and speaker IDs consistent across shots.`;
         }
     }
     switch (mode) {
         case 'single': return 'Show ONE continuous shot with no cuts. To change distance or angle, move the camera instead of cutting.';
         case 'multi': return `Show ${range} short shots in order, like separate recordings joined together. Start every shot after the first with "Cut to:" and give it its own framing, action and camera movement. Each shot lasts at least about 2 seconds.`;
-        case 'auto': return `Decide the number of shots yourself: ONE continuous shot when the moments happen in one place and flow into each other, or ${range} short shots joined by "Cut to:" when they are separated in time or place. Each shot lasts at least about 2 seconds.`;
+        case 'auto': return `Decide the number of shots yourself: ONE continuous shot when the moments happen in one place and flow into each other, or ${range} short shots joined by "Cut to:" when they are separated in time or place or when a clear setup → peak → reaction reads better with cuts. Each shot lasts at least about 2 seconds.`;
     }
 }
