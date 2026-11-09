@@ -1,6 +1,7 @@
 import './style.css';
 import settingsHtml from './settings.html';
 import {
+    Aspect,
     AUDIO_MODES,
     AudioMode,
     BackendId,
@@ -69,6 +70,13 @@ function migrateLegacyFields(current: any) {
         current.looks = { ...current.looks, bystander: { ...look, ...current.looks?.bystander } };
         delete current.styleSuffix;
         delete current.negativePrompt;
+    }
+    if (typeof current.aspect === 'string') {
+        current.looks ??= {};
+        for (const mode of ['bystander', 'pov', 'selfie'] as CameraMode[]) {
+            current.looks[mode] = { aspect: current.aspect, ...current.looks[mode] };
+        }
+        delete current.aspect;
     }
     if (typeof current.audio === 'boolean') {
         current.audioMode ??= current.audio ? 'full' : 'none';
@@ -192,7 +200,7 @@ function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean): st
         .replaceAll('{{user}}', ctx().name1 || 'the user')
         .replaceAll('{{words}}', String(Math.min(260, Math.max(80, Math.round(s.seconds * 20)))))
         .replaceAll('{{seconds}}', String(s.seconds))
-        .replaceAll('{{aspect}}', s.aspect)
+        .replaceAll('{{aspect}}', look(s).aspect)
         .replaceAll('{{style}}', look(s).style.trim() || 'Realistic live-action footage.');
 }
 
@@ -587,6 +595,7 @@ async function showOpenRouterModels() {
 function renderLook() {
     const s = settings();
     const l = look(s);
+    $('#scene_video_aspect').val(l.aspect);
     $('#scene_video_style').val(l.style);
     $('#scene_video_negative').val(l.negative);
     $('#scene_video_look_camera').text(CAMERA_MODES[s.cameraMode]?.label ?? s.cameraMode);
@@ -604,7 +613,6 @@ function initSettingsUI() {
     $('#scene_video_comfy_url').val(s.comfyUrl);
     $('#scene_video_comfy_fps').val(s.comfyFps);
     $('#scene_video_seconds').val(s.seconds);
-    $('#scene_video_aspect').val(s.aspect);
     $('#scene_video_shots').val(s.shotMode);
     $('#scene_video_camera').val(s.cameraMode);
     $('#scene_video_audio_mode').val(s.audioMode);
@@ -644,7 +652,7 @@ function initSettingsUI() {
     bindInput('#scene_video_comfy_workflow', v => { settings().comfyWorkflow = v; });
     bindInput('#scene_video_comfy_fps', v => { settings().comfyFps = Number(v) || 24; });
     bindInput('#scene_video_seconds', v => { settings().seconds = Number(v) || DEFAULT_SETTINGS.seconds; });
-    bindInput('#scene_video_aspect', v => { settings().aspect = v as SceneVideoSettings['aspect']; });
+    bindInput('#scene_video_aspect', v => { look(settings()).aspect = v as Aspect; });
     bindInput('#scene_video_shots', v => { settings().shotMode = v as ShotMode; });
     bindInput('#scene_video_camera', v => { settings().cameraMode = v as CameraMode; renderLook(); });
     bindInput('#scene_video_audio_mode', v => { settings().audioMode = v as AudioMode; });

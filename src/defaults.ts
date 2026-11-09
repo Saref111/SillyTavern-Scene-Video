@@ -19,8 +19,11 @@ export type CameraMode = 'bystander' | 'pov' | 'selfie' | 'cctv' | 'cinematic';
 /** What the clip sounds like. */
 export type AudioMode = 'full' | 'dialogue' | 'ambient' | 'none';
 
-/** Style and negative prompt, kept separately for each camera mode. */
+export type Aspect = '9:16' | '16:9' | '1:1' | '3:4' | '4:3';
+
+/** Aspect ratio, style and negative prompt, kept separately for each camera mode. */
 export interface Look {
+    aspect: Aspect;
     style: string;
     negative: string;
 }
@@ -33,7 +36,6 @@ export interface SceneVideoSettings {
     backend: BackendId;
     backends: Record<'openrouter' | 'wavespeed', BackendConfig>;
     seconds: number;
-    aspect: '9:16' | '16:9' | '1:1' | '3:4' | '4:3';
     shotMode: ShotMode;
     cameraMode: CameraMode;
     audioMode: AudioMode;
@@ -169,6 +171,7 @@ export const CAMERA_MODES: Record<CameraMode, { label: string; rule: string; mus
         rule: `Filmed on a smartphone by someone physically present in the scene, a bystander or one of the participants, who stays off-screen. Handheld: slight shake, following the action, small pans and quick zooms. The person filming reacts to what happens: the phone jolts at sudden moments, swings to follow someone, steps closer or back. If they speak, their voice comes from off-screen. ${PHONE_SOUND}`,
         music: NO_SCORE,
         look: {
+            aspect: '9:16',
             style: 'Amateur smartphone footage, handheld, slight camera shake, natural available light, auto-exposure and focus adjustments, mild motion blur, phone microphone ambient audio, no music, no subtitles, realistic, unedited raw clip.',
             negative: `${MOTION_NEGATIVE}, cinematic color grading, studio lighting, tripod, gimbal, text, watermark, subtitles, logo, cartoon, CGI, anime`,
         },
@@ -178,6 +181,7 @@ export const CAMERA_MODES: Record<CameraMode, { label: string; rule: string; mus
         rule: `First-person POV: the user's character ({{user}}) films on a smartphone held at their own eye level. People in the scene look and talk straight into the lens, as if to that person. The user's own hands and forearms may appear at the edges of the frame, reaching out, gesturing or touching things, but their face is never seen. The camera moves like a head and body: it turns toward whoever speaks, steps closer, jolts when something sudden happens. If the user speaks, their voice is off-screen and very close to the microphone. ${PHONE_SOUND}`,
         music: NO_SCORE,
         look: {
+            aspect: '9:16',
             style: 'First-person POV smartphone footage, handheld at eye level, slight camera shake, natural available light, auto-exposure and focus adjustments, mild motion blur, phone microphone audio, no music, no subtitles, realistic, unedited raw clip.',
             negative: `${MOTION_NEGATIVE}, cinematic color grading, studio lighting, tripod, gimbal, text, watermark, subtitles, logo, cartoon, CGI, anime`,
         },
@@ -187,6 +191,7 @@ export const CAMERA_MODES: Record<CameraMode, { label: string; rule: string; mus
         rule: `Selfie video: the character at the center of the moment films themselves with the phone's front camera held at arm's length, talking and reacting straight into the lens. Their face fills much of the frame with slight wide-angle distortion; others squeeze into the frame, lean in behind them or react in the background. The phone moves with the holder's arm: it bobs as they walk, tilts when they laugh, turns to show someone else, then swings back. ${PHONE_SOUND} The holder's voice is loud and close.`,
         music: NO_SCORE,
         look: {
+            aspect: '9:16',
             style: 'Front-camera selfie smartphone footage, held at arm\'s length, slight wide-angle distortion, slight camera shake, natural available light, auto-exposure, phone microphone audio, no music, no subtitles, realistic, unedited raw clip.',
             negative: `${MOTION_NEGATIVE}, cinematic color grading, studio lighting, tripod, gimbal, text, watermark, subtitles, logo, cartoon, CGI, anime`,
         },
@@ -196,6 +201,7 @@ export const CAMERA_MODES: Record<CameraMode, { label: string; rule: string; mus
         rule: 'A fixed security camera mounted high in a corner looks down at the scene in a wide shot. Nobody holds it and nobody notices it. The camera never moves: no pans, no zooms, no shake. Faces are small, so show emotion through big, clear body language and movement, and keep everyone in frame. Sound comes from a cheap, distant microphone: muffled voices, room echo, electrical hum.',
         music: NO_SCORE,
         look: {
+            aspect: '16:9',
             style: 'Security camera footage, fixed high-angle wide shot, slight fisheye lens, grainy low-resolution image, washed-out colors, compression artifacts, no camera movement, no music, realistic.',
             negative: `${MOTION_NEGATIVE}, camera movement, handheld shake, cinematic lighting, shallow depth of field, watermark, subtitles, logo, cartoon, CGI, anime`,
         },
@@ -205,6 +211,7 @@ export const CAMERA_MODES: Record<CameraMode, { label: string; rule: string; mus
         rule: 'A professional film camera operated by an unseen crew. Choose framing for the story: close-ups for emotion, medium shots for action. Camera moves are smooth and motivated: dolly push-ins, tracking shots, slow arcs, steady handheld for tension. Nobody looks into the camera. Sound is clean and close, like a film mix.',
         music: 'Describe a fitting score in 1–3 sentences: instruments, tempo, rhythm and how it changes, without mood words. Write "N/A" if silence works better. Music the characters can hear belongs in integrated_multimodal_description.',
         look: {
+            aspect: '16:9',
             style: 'Cinematic live-action film, professional camera work, shallow depth of field, smooth camera movement, motivated lighting, natural color grading, realistic.',
             negative: `${MOTION_NEGATIVE}, shaky amateur footage, low quality, overexposed, text, watermark, subtitles, logo, cartoon, CGI, anime`,
         },
@@ -248,7 +255,6 @@ export const DEFAULT_SETTINGS: SceneVideoSettings = {
         wavespeed: { model: 'wavespeed-ai/minimax-h3/text-to-video', resolution: '768p', extra: '' },
     },
     seconds: 6,
-    aspect: '9:16',
     shotMode: 'single',
     cameraMode: 'bystander',
     audioMode: 'full',

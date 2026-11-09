@@ -85,7 +85,7 @@ How the H3 format is handled:
 
 ## Prompt settings
 
-**Camera** sets who or what records the clip. Each camera has its own **Style** and **Negative prompt**; the two fields edit the ones of the selected camera.
+**Camera** sets who or what records the clip. Each camera has its own **Aspect**, **Style** and **Negative prompt**; these fields edit the ones of the selected camera. Phone cameras default to 9:16, the security camera and cinematic to 16:9.
 
 | Camera | What you get |
 |---|---|

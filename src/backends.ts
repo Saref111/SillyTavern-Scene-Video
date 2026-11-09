@@ -1,4 +1,6 @@
-import { H3_MODEL_PATTERN, SceneVideoSettings } from './defaults';
+import { Aspect, H3_MODEL_PATTERN, SceneVideoSettings } from './defaults';
+
+const aspectOf = (s: SceneVideoSettings): Aspect => s.looks[s.cameraMode]?.aspect ?? '9:16';
 
 export const PLUGIN_BASE = '/api/plugins/scene-video';
 
@@ -57,7 +59,7 @@ async function generateCloud({ prompt, negative, settings, signal }: GenerateArg
         // MiniMax H3 has no negative prompt; other WaveSpeed models may accept one.
         negative: backend === 'wavespeed' && !H3_MODEL_PATTERN.test(cfg.model) ? negative : undefined,
         seconds: settings.seconds,
-        aspect: settings.aspect,
+        aspect: aspectOf(settings),
         resolution: cfg.resolution || undefined,
         audio: backend === 'openrouter' ? settings.audioMode !== 'none' : undefined,
         extra: parseExtra(cfg.extra),
@@ -65,7 +67,7 @@ async function generateCloud({ prompt, negative, settings, signal }: GenerateArg
     return { format: data.format, data: data.data };
 }
 
-function comfySize(aspect: SceneVideoSettings['aspect']): [number, number] {
+function comfySize(aspect: Aspect): [number, number] {
     switch (aspect) {
         case '9:16': return [704, 1280];
         case '16:9': return [1280, 704];
@@ -89,7 +91,7 @@ async function generateComfy({ prompt, negative, settings, signal }: GenerateArg
     if (!wfRes.ok) {
         throw new Error(`Failed to load workflow: ${await wfRes.text()}`);
     }
-    const [width, height] = comfySize(settings.aspect);
+    const [width, height] = comfySize(aspectOf(settings));
     // Wan-style models expect 4n+1 frames.
     const length = Math.round((settings.seconds * settings.comfyFps) / 4) * 4 + 1;
     const values: Record<string, unknown> = {
