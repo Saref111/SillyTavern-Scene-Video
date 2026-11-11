@@ -1,6 +1,6 @@
 // Pre-generation popup: per-clip settings that can be changed before every video without opening the settings panel.
-import { Aspect, AUDIO_MODES, AudioMode, BackendId, CAMERA_MODES, CameraMode, H3_MODEL_PATTERN, MODEL_SUGGESTIONS, SceneVideoSettings, ShotMode } from './defaults';
-import { listComfyWorkflows } from './backends';
+import { Aspect, AUDIO_MODES, AudioMode, BackendId, CAMERA_MODES, CameraMode, H3_MODEL_PATTERN, MODEL_SUGGESTIONS, SceneVideoSettings, ShotMode } from '../defaults';
+import { listComfyWorkflows } from '../backends';
 
 export interface PreflightInput {
     settings: SceneVideoSettings;
