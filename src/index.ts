@@ -203,6 +203,7 @@ function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean, app
         .replaceAll('{{example}}', example)
         .replaceAll('{{user}}', ctx().name1 || 'the user')
         .replaceAll('{{words}}', String(Math.min(260, Math.max(80, Math.round(s.seconds * 20)))))
+        .replaceAll('{{beats}}', String(Math.max(3, Math.min(6, Math.round(s.seconds / 3) + 1))))
         .replaceAll('{{seconds}}', String(s.seconds))
         .replaceAll('{{aspect}}', look(s).aspect)
         .replaceAll('{{style}}', look(s).style.trim() || 'Realistic live-action footage.');

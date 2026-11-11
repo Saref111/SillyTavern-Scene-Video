@@ -107,6 +107,8 @@ How the H3 format is handled:
 
 The number of shots depends on the duration: up to 3 for 6 s, up to 4 for 8 s or more. Each shot lasts at least about 2 seconds. H3 prompts use `[Shot 2] At 00:03.500, ...`; other models get `Cut to:`.
 
+Prompts are written as a timeline: every 2–4 seconds gets its own timed beat (`At 00:02.000, ...` for H3, `[2s-4s] ...` for other models), so the action fills the whole clip.
+
 **LLM for writing prompts** picks a Connection Manager profile for this step, so the chat can run on one model while prompts are written by another that follows instructions better. **Same as chat** uses the current connection.
 
 **Plan the clip first** (on by default) splits the work into two LLM calls: a short plan (moments, people in focus, the emotional change, 2–3 actions with timing, camera, exact lines, sounds, shots), then the prompt written from that plan. The plan is logged to the browser console as `[Scene Video] plan`.
