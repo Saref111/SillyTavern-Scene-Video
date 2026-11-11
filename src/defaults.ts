@@ -33,6 +33,8 @@ export interface SceneVideoSettings {
     enabled: boolean;
     autoGenerate: boolean;
     confirmPrompt: boolean;
+    /** Show a popup with the per-clip settings before each generation. */
+    preflight: boolean;
     backend: BackendId;
     backends: Record<'openrouter' | 'wavespeed', BackendConfig>;
     seconds: number;
@@ -349,6 +351,7 @@ export const DEFAULT_SETTINGS: SceneVideoSettings = {
     enabled: true,
     autoGenerate: false,
     confirmPrompt: true,
+    preflight: false,
     backend: 'openrouter',
     backends: {
         openrouter: { model: 'minimax/hailuo-3', resolution: '', extra: '' },

@@ -31,3 +31,22 @@
 @keyframes scene-video-pulse {
     50% { opacity: 0.35; }
 }
+
+.scene-video-preflight {
+    text-align: left;
+}
+
+.scene-video-preflight label {
+    display: block;
+    margin-top: 6px;
+}
+
+.scene-video-preflight .checkbox_label {
+    display: flex;
+}
+
+.scene-video-pf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0 10px;
+}

@@ -115,6 +115,8 @@ Prompts are written as a timeline: every 2–4 seconds gets its own timed beat (
 
 Each camera has its own example in the instruction (`{{example}}`), for both the H3 and the generic format.
 
+**Show clip settings before each generation** opens a popup before the LLM is called. In it you can change this clip's backend, model, resolution, duration, aspect, camera, sound, shots, prompt LLM, context messages and two-step planning, edit the fragment to film, and add a free-form **Direction** ("end on her laughing into the lens", "no dialogue"). The changes apply to this clip only; tick **Save these as the default settings** to keep them. `quiet=true` skips this popup too.
+
 **Regenerate** in the prompt review popup asks the LLM for a new prompt without closing the popup. It uses the current settings, so you can change **Shots** and regenerate right away.
 
 The LLM picks the 1–3 moments of the message that matter most. The instruction keeps the prompt short and lively: about 20 words per second of video, at most two people in focus with their faces toward the camera, one clear change of emotion per person, and big whole-body actions instead of small details. Long, detailed prompts make video models produce calm, almost still clips.
@@ -143,6 +145,7 @@ If a custom instruction has no `{{shots}}`, `{{camera}}`, `{{audio}}` or `{{musi
 /scenevideo prompt="..."    — use your own prompt and skip the LLM step
 /scenevideo quiet=true      — skip the prompt review popup
 /scenevideo focus="..."     — build the clip around this fragment of the message
+/scenevideo direction="..." — extra direction for the LLM, e.g. "no dialogue"
 ```
 
 The command returns the URL of the saved video, so you can use it in STscript and Quick Replies.

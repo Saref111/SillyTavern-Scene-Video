@@ -24,6 +24,7 @@ import {
     shotRule,
 } from './defaults';
 import { generateVideo, getPluginStatus, listComfyWorkflows, PLUGIN_BASE, saveWaveSpeedKey } from './backends';
+import { showPreflight } from './preflight';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -115,7 +116,7 @@ function truncate(text: string, max: number): string {
     return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-function buildSceneContext(messageId: number, s: SceneVideoSettings, focus?: string): string {
+function buildSceneContext(messageId: number, s: SceneVideoSettings, focus?: string, direction?: string): string {
     const c = ctx();
     const parts: string[] = [];
 
@@ -142,6 +143,9 @@ function buildSceneContext(messageId: number, s: SceneVideoSettings, focus?: str
         parts.push(`[FOCUS: the user selected this fragment of the last message. The clip must show exactly this moment; use the rest only as context]\n${truncate(focus, 1500)}`);
     } else {
         parts.push(`[LAST message — film this moment]\n${target.name}: ${truncate(cleanText(target.mes), 4000)}`);
+    }
+    if (direction) {
+        parts.push(`[DIRECTION from the user for this clip: follow it even where it differs from your own choice]\n${truncate(direction, 1500)}`);
     }
     return parts.join('\n\n');
 }
@@ -210,7 +214,7 @@ function applyTemplate(template: string, s: SceneVideoSettings, h3: boolean, app
 }
 
 // Prompt review popup with a Regenerate button that asks the LLM for a new prompt without closing.
-async function reviewPrompt(messageId: number, prompt: string, note: string, isH3: boolean, focus?: string): Promise<string | null> {
+async function reviewPrompt(prompt: string, note: string, isH3: boolean, rewrite: () => Promise<string>): Promise<string | null> {
     const c = ctx();
     let busy = false;
     let closed = false;
@@ -226,7 +230,7 @@ async function reviewPrompt(messageId: number, prompt: string, note: string, isH
         input.disabled = true;
         if (label) label.textContent = 'Regenerating…';
         try {
-            const next = await writeVideoPrompt(messageId, settings(), focus);
+            const next = await rewrite();
             if (!closed) input.value = next;
         } catch (error: any) {
             toastr.error(String(error?.message ?? error), 'Scene Video');
@@ -268,11 +272,11 @@ async function callLlm(s: SceneVideoSettings, system: string, user: string, maxT
     return typeof result === 'string' ? result : String(result?.content ?? '');
 }
 
-async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string): Promise<string> {
+async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string, direction?: string): Promise<string> {
     const format = resolvePromptFormat(s);
     const h3 = format === 'minimax-h3';
     const system = applyTemplate(h3 ? s.systemPromptH3 : s.systemPrompt, s, h3);
-    const scene = buildSceneContext(messageId, s, focus);
+    const scene = buildSceneContext(messageId, s, focus, direction);
 
     let plan = '';
     if (s.twoStep) {
@@ -346,11 +350,13 @@ interface RunOptions {
     quiet?: boolean;
     /** Fragment of the message to film instead of letting the LLM choose. */
     focus?: string;
+    /** Free-form direction for this clip, passed to the LLM. */
+    direction?: string;
 }
 
 export async function generateSceneVideo(messageId: number, opts: RunOptions = {}): Promise<string> {
     const c = ctx();
-    const s = settings();
+    let s = settings();
     const message = c.chat[messageId];
     if (!message) throw new Error(`Message #${messageId} not found`);
     if (running.has(messageId)) throw new Error('A video is already being generated for this message.');
@@ -363,10 +369,20 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
 
     try {
         let prompt = opts.prompt?.trim();
-        const focus = opts.focus?.trim() || undefined;
+        let focus = opts.focus?.trim() || undefined;
+        let direction = opts.direction?.trim() || undefined;
+        if (s.preflight && !opts.quiet) {
+            const choice = await showPreflight({ settings: s, focus, direction, needsPrompt: !prompt });
+            if (!choice) return '';
+            ({ settings: s, focus, direction } = choice);
+            if (choice.saveAsDefault) {
+                persistClipSettings(s);
+                syncSettingsUI();
+            }
+        }
         if (!prompt) {
             toast = toastr.info(focus ? 'Writing the video prompt for the selected fragment…' : 'Writing the video prompt…', 'Scene Video', { timeOut: 0, extendedTimeOut: 0 });
-            prompt = await writeVideoPrompt(messageId, s, focus);
+            prompt = await writeVideoPrompt(messageId, s, focus, direction);
             toastr.clear(toast);
         }
 
@@ -377,7 +393,9 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
                 : 'The style suffix is added automatically.';
             const camera = CAMERA_MODES[s.cameraMode]?.label ?? s.cameraMode;
             const fragment = focus ? `<br>Selected fragment: <i>«${escapeHtml(truncate(focus, 300))}»</i>` : '';
-            const edited = await reviewPrompt(messageId, prompt, `${note} Backend: <b>${s.backend}</b>, camera: <b>${camera}</b>.${fragment}`, isH3, focus);
+            const clip = s;
+            const edited = await reviewPrompt(prompt, `${note} Backend: <b>${s.backend}</b>, camera: <b>${camera}</b>.${fragment}`, isH3,
+                () => writeVideoPrompt(messageId, clip, focus, direction));
             if (edited === null || edited === undefined || !String(edited).trim()) {
                 return '';
             }
@@ -477,6 +495,42 @@ function syncButtons() {
 }
 
 // ---------- settings UI ----------
+
+/** Copies the per-clip fields chosen in the pre-generation popup into the saved settings. */
+function persistClipSettings(clip: SceneVideoSettings) {
+    const s = settings();
+    for (const key of ['backend', 'seconds', 'cameraMode', 'audioMode', 'shotMode', 'twoStep', 'contextMessages', 'promptProfile', 'comfyWorkflow'] as const) {
+        (s as any)[key] = clip[key];
+    }
+    s.backends = structuredClone(clip.backends);
+    s.looks[clip.cameraMode].aspect = clip.looks[clip.cameraMode].aspect;
+    save();
+}
+
+/** Puts the saved settings into the settings panel controls. */
+function syncSettingsUI() {
+    const s = settings();
+    $('#scene_video_enabled').prop('checked', s.enabled);
+    $('#scene_video_confirm').prop('checked', s.confirmPrompt);
+    $('#scene_video_preflight').prop('checked', s.preflight);
+    $('#scene_video_auto').prop('checked', s.autoGenerate);
+    $('#scene_video_backend').val(s.backend);
+    $('#scene_video_comfy_url').val(s.comfyUrl);
+    $('#scene_video_comfy_fps').val(s.comfyFps);
+    $('#scene_video_seconds').val(s.seconds);
+    $('#scene_video_shots').val(s.shotMode);
+    $('#scene_video_camera').val(s.cameraMode);
+    $('#scene_video_audio_mode').val(s.audioMode);
+    $('#scene_video_context').val(s.contextMessages);
+    $('#scene_video_response_length').val(s.responseLength);
+    $('#scene_video_two_step').prop('checked', s.twoStep);
+    $('#scene_video_profile').val(s.promptProfile);
+    $('#scene_video_system').val(s.systemPrompt);
+    $('#scene_video_format').val(s.promptFormat);
+    $('#scene_video_system_h3').val(s.systemPromptH3);
+    renderLook();
+    if ($('#scene_video_settings').length) renderBackendSection();
+}
 
 async function refreshPluginStatus() {
     const s = settings();
@@ -655,31 +709,15 @@ function renderLook() {
 }
 
 function initSettingsUI() {
-    const s = settings();
     const container = $('#extensions_settings2').length ? $('#extensions_settings2') : $('#extensions_settings');
     container.append(settingsHtml);
 
-    $('#scene_video_enabled').prop('checked', s.enabled);
-    $('#scene_video_confirm').prop('checked', s.confirmPrompt);
-    $('#scene_video_auto').prop('checked', s.autoGenerate);
-    $('#scene_video_backend').val(s.backend);
-    $('#scene_video_comfy_url').val(s.comfyUrl);
-    $('#scene_video_comfy_fps').val(s.comfyFps);
-    $('#scene_video_seconds').val(s.seconds);
-    $('#scene_video_shots').val(s.shotMode);
-    $('#scene_video_camera').val(s.cameraMode);
-    $('#scene_video_audio_mode').val(s.audioMode);
-    $('#scene_video_context').val(s.contextMessages);
-    $('#scene_video_response_length').val(s.responseLength);
-    $('#scene_video_two_step').prop('checked', s.twoStep);
     initProfileSelect();
-    $('#scene_video_system').val(s.systemPrompt);
-    $('#scene_video_format').val(s.promptFormat);
-    $('#scene_video_system_h3').val(s.systemPromptH3);
-    renderLook();
+    syncSettingsUI();
 
     bindInput('#scene_video_enabled', (_v, c) => { settings().enabled = c; syncButtons(); });
     bindInput('#scene_video_confirm', (_v, c) => { settings().confirmPrompt = c; });
+    bindInput('#scene_video_preflight', (_v, c) => { settings().preflight = c; });
     bindInput('#scene_video_auto', (_v, c) => { settings().autoGenerate = c; });
     $('#scene_video_backend').on('change', function (this: HTMLSelectElement) {
         settings().backend = this.value as BackendId;
@@ -742,8 +780,6 @@ function initSettingsUI() {
         renderLook();
         save();
     });
-
-    renderBackendSection();
 }
 
 // ---------- slash command ----------
@@ -761,11 +797,13 @@ function registerSlashCommand() {
                 prompt: args.prompt ? String(args.prompt) : undefined,
                 quiet: String(args.quiet) === 'true',
                 focus: args.focus ? String(args.focus) : undefined,
+                direction: args.direction ? String(args.direction) : undefined,
             });
         },
         namedArgumentList: [
             SlashCommandNamedArgument.fromProps({ name: 'prompt', description: 'Ready video prompt (skips the LLM step)', typeList: ['string'] }),
             SlashCommandNamedArgument.fromProps({ name: 'focus', description: 'Fragment of the message to film; the LLM builds the clip around it', typeList: ['string'] }),
+            SlashCommandNamedArgument.fromProps({ name: 'direction', description: 'Extra direction for this clip, passed to the LLM', typeList: ['string'] }),
             SlashCommandNamedArgument.fromProps({ name: 'quiet', description: 'Skip the prompt review popup', typeList: ['bool'], defaultValue: 'false' }),
         ],
         unnamedArgumentList: [
