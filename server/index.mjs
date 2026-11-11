@@ -5,6 +5,7 @@
 // Install: copy (or symlink) this folder to <SillyTavern>/plugins/scene-video
 // and set `enableServerPlugins: true` in config.yaml.
 
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -20,6 +21,9 @@ const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 
 const OR_BASE = 'https://openrouter.ai/api/v1';
 const WS_BASE = 'https://api.wavespeed.ai/api/v3';
+// Reference pictures need public URLs: they go to uguu.se, which deletes files after 3 hours.
+const IMAGE_HOST_URL = 'https://uguu.se/upload';
+const IMAGE_HOST_CACHE_MS = 2 * 60 * 60 * 1000;
 const OR_HEADERS = { 'HTTP-Referer': 'https://sillytavern.app', 'X-Title': 'SillyTavern' };
 
 let readSecret = null;
@@ -76,6 +80,9 @@ async function downloadBase64(url, headers, signal) {
     let format = 'mp4';
     if (contentType.includes('webm') || /\.webm(\?|$)/i.test(url)) format = 'webm';
     else if (contentType.includes('quicktime') || /\.mov(\?|$)/i.test(url)) format = 'mov';
+    else if (contentType.includes('png') || /\.png(\?|$)/i.test(url)) format = 'png';
+    else if (contentType.includes('jpeg') || /\.jpe?g(\?|$)/i.test(url)) format = 'jpg';
+    else if (contentType.includes('webp') || /\.webp(\?|$)/i.test(url)) format = 'webp';
     return { format, data: buffer.toString('base64') };
 }
 
@@ -89,6 +96,36 @@ function getKey(request, secretKey, label) {
 
 function withoutNulls(obj) {
     return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== ''));
+}
+
+// ---------- Reference pictures ----------
+
+/** sha1 of the image -> { url, at }, so the same card isn't uploaded again for every clip. */
+const hostedImages = new Map();
+
+async function hostImage({ data, format }, signal) {
+    const buffer = Buffer.from(String(data || ''), 'base64');
+    if (!buffer.length) throw new HttpError(400, 'A reference picture is empty');
+    const hash = crypto.createHash('sha1').update(buffer).digest('hex');
+    const cached = hostedImages.get(hash);
+    if (cached && Date.now() - cached.at < IMAGE_HOST_CACHE_MS) return cached.url;
+
+    const ext = /^(png|jpe?g|webp)$/i.test(format) ? format.toLowerCase().replace('jpeg', 'jpg') : 'png';
+    const form = new FormData();
+    form.append('files[]', new Blob([buffer], { type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` }), `card-${hash.slice(0, 10)}.${ext}`);
+    const result = await fetchJson(IMAGE_HOST_URL, { method: 'POST', body: form, signal }, 'Reference picture upload (uguu.se)');
+    const url = result?.files?.[0]?.url;
+    if (!url) throw new HttpError(502, `uguu.se returned no URL: ${JSON.stringify(result).slice(0, 300)}`);
+    hostedImages.set(hash, { url, at: Date.now() });
+    return url;
+}
+
+async function hostReferences(references, signal) {
+    if (!Array.isArray(references) || !references.length) return [];
+    const urls = [];
+    for (const ref of references.slice(0, 3)) urls.push(await hostImage(ref, signal));
+    console.info('[scene-video] Reference pictures', urls);
+    return urls;
 }
 
 // ---------- OpenRouter ----------
@@ -106,6 +143,9 @@ async function generateOpenRouter(request, signal) {
         resolution: b.resolution,
         generate_audio: b.audio,
         seed: b.seed,
+        input_references: b.referenceUrls?.length
+            ? b.referenceUrls.map(url => ({ type: 'image_url', image_url: { url } }))
+            : undefined,
         ...(b.extra || {}),
     });
 
@@ -153,7 +193,9 @@ async function generateWaveSpeed(request, signal) {
     const b = request.body;
 
     // Model is a path like "google/veo3.1/text-to-video" or "wavespeed-ai/wan-2.2/t2v-720p".
-    const modelPath = String(b.model || '').replace(/^\/+|\/+$/g, '');
+    // With reference pictures a text-to-video path switches to the model's reference-to-video endpoint.
+    let modelPath = String(b.model || '').replace(/^\/+|\/+$/g, '');
+    if (b.referenceUrls?.length) modelPath = modelPath.replace('text-to-video', 'reference-to-video');
     if (!/^[\w.-]+(\/[\w.-]+)+$/.test(modelPath)) {
         throw new HttpError(400, `Invalid WaveSpeed model path: ${modelPath}`);
     }
@@ -166,10 +208,15 @@ async function generateWaveSpeed(request, signal) {
         aspect_ratio: b.aspect,
         resolution: b.resolution,
         seed: b.seed,
+        reference_images: b.referenceUrls?.length ? b.referenceUrls : undefined,
         ...(b.extra || {}),
     };
     const body = withoutNulls(merged);
+    return runWaveSpeed(modelPath, body, headers, signal);
+}
 
+/** Submits a WaveSpeed prediction, waits for it and downloads the first output. */
+async function runWaveSpeed(modelPath, body, headers, signal) {
     console.info('[scene-video] WaveSpeed submit', modelPath, { ...body, prompt: `${String(body.prompt).slice(0, 80)}…` });
     const submit = await fetchJson(`${WS_BASE}/${modelPath}`, {
         method: 'POST',
@@ -202,7 +249,71 @@ async function generateWaveSpeed(request, signal) {
             throw new HttpError(502, `WaveSpeed job ${data.status}: ${data.error || ''}`);
         }
     }
-    throw new HttpError(504, 'WaveSpeed video generation timed out');
+    throw new HttpError(504, 'WaveSpeed generation timed out');
+}
+
+/** Draws an appearance card with a WaveSpeed text-to-image model. */
+// A card picture's shape: the aspect ratio and resolution tier chosen in the cards popup. WaveSpeed image
+// models take them differently: as aspect_ratio + resolution (MiniMax H3, Krea…) or as a size in pixels
+// (Seedream…). The model's own documentation lists its parameters, so it's read once per model.
+const RESOLUTION_MEGAPIXELS = { '1k': 1, '1.5k': 2.4, '2k': 4 };
+const imageParamsCache = new Map();
+
+function optionsOf(doc, param) {
+    const at = doc.indexOf(`**\`${param}\`**`);
+    if (at < 0) return null;
+    const next = doc.indexOf('- **`', at + 5);
+    const section = doc.slice(at, next < 0 ? undefined : next);
+    const line = section.match(/Options:\s*(.+)/);
+    return line ? [...line[1].matchAll(/"([^"]+)"/g)].map(m => m[1]) : [];
+}
+
+async function imageShape(modelPath, aspect, resolution, signal) {
+    if (!imageParamsCache.has(modelPath)) {
+        let doc = '';
+        try {
+            const res = await fetch(`https://wavespeed.ai/models/${modelPath}/llms.txt`, { signal });
+            if (res.ok) doc = await res.text();
+        } catch {
+            // no documentation: fall back to the common parameters below
+        }
+        imageParamsCache.set(modelPath, doc);
+    }
+    const doc = imageParamsCache.get(modelPath);
+    const shape = {};
+    const [aw, ah] = String(aspect || '16:9').split(':').map(Number);
+    const ratio = aw > 0 && ah > 0 ? aw / ah : 16 / 9;
+    const tier = RESOLUTION_MEGAPIXELS[resolution] ? resolution : '1k';
+    const ratios = optionsOf(doc, 'aspect_ratio');
+    const value = r => { const [w, h] = r.split(':').map(Number); return w / h; };
+    if (ratios?.length) {
+        // The listed ratio closest to the requested one; on a tie the taller one leaves more room for the full body.
+        shape.aspect_ratio = ratios.filter(r => /^\d+:\d+$/.test(r))
+            .sort((a, b) => Math.abs(value(a) - ratio) - Math.abs(value(b) - ratio) || value(a) - value(b))[0];
+    } else if (doc.includes('**`size`**')) {
+        const pixels = RESOLUTION_MEGAPIXELS[tier] * 1024 * 1024;
+        const height = Math.round(Math.sqrt(pixels / ratio) / 64) * 64;
+        shape.size = `${Math.round(height * ratio / 64) * 64}*${height}`;
+    } else {
+        shape.aspect_ratio = `${aw}:${ah}`;
+    }
+    const resolutions = optionsOf(doc, 'resolution');
+    if (resolutions?.length) shape.resolution = resolutions.includes(tier) ? tier : resolutions[0];
+    if (optionsOf(doc, 'output_format')?.includes('png')) shape.output_format = 'png';
+    return shape;
+}
+
+async function generateWaveSpeedImage(request, signal) {
+    const key = getKey(request, SECRET_WAVESPEED, 'WaveSpeed');
+    const b = request.body;
+    const modelPath = String(b.model || '').replace(/^\/+|\/+$/g, '');
+    if (!/^[\w.-]+(\/[\w.-]+)+$/.test(modelPath)) {
+        throw new HttpError(400, `Invalid WaveSpeed model path: ${modelPath}`);
+    }
+    const shape = await imageShape(modelPath, b.aspect, b.resolution, signal);
+    console.info('[scene-video] card image', modelPath, JSON.stringify(shape));
+    const body = withoutNulls({ prompt: b.prompt, ...shape, ...(b.extra || {}) });
+    return runWaveSpeed(modelPath, body, { 'Authorization': `Bearer ${key}` }, signal);
 }
 
 // ---------- Router ----------
@@ -245,6 +356,7 @@ export async function init(router) {
             if (!request.body.prompt) {
                 throw new HttpError(400, 'Prompt is empty');
             }
+            request.body.referenceUrls = await hostReferences(request.body.references, controller.signal);
             const result = await fn(request, controller.signal);
             res.send(result);
         } catch (error) {
@@ -252,6 +364,19 @@ export async function init(router) {
             if (!res.headersSent) {
                 res.status(error.status && error.status < 600 ? error.status : 500).send(error.message);
             }
+        }
+    });
+
+    router.post('/wavespeed/image', async (request, res) => {
+        const controller = new AbortController();
+        request.socket.removeAllListeners('close');
+        request.socket.on('close', () => controller.abort());
+        try {
+            if (!request.body?.prompt) throw new HttpError(400, 'Prompt is empty');
+            res.send(await generateWaveSpeedImage(request, controller.signal));
+        } catch (error) {
+            console.warn('[scene-video]', error.message);
+            if (!res.headersSent) res.status(error.status && error.status < 600 ? error.status : 500).send(error.message);
         }
     });
 

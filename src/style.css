@@ -50,3 +50,52 @@
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 0 10px;
 }
+
+.scene-video-card {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 6px 0;
+}
+
+.scene-video-card-img {
+    width: 160px;
+    height: 60px;
+    object-fit: contain;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.scene-video-card-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.4;
+    border: 1px dashed currentColor;
+}
+
+.scene-video-cards-popup {
+    text-align: left;
+}
+
+.scene-video-card-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.scene-video-card-head input.text_pole {
+    width: auto;
+    flex: 1;
+    margin: 0;
+}
+
+.scene-video-card-size {
+    margin: 8px 0;
+}
+
+.scene-video-card-size select.text_pole {
+    width: auto;
+    display: inline-block;
+    margin: 0 0 0 4px;
+}

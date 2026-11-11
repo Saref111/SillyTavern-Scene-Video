@@ -58,4 +58,33 @@ export interface SceneVideoSettings {
     /** Instruction for the MiniMax H3 structured format. */
     systemPromptH3: string;
     looks: Record<CameraMode, Look>;
+    /** Send appearance cards of the people on screen to the video model as reference pictures. */
+    useCards: boolean;
+    /** Appearance cards by owner: "char:<avatar file>" or "persona:<avatar file>". */
+    cards: Record<string, AppearanceCard>;
+    /** WaveSpeed text-to-image model used to draw cards. */
+    cardImageModel: string;
+    /** Card picture shape, e.g. "16:9", and resolution tier ("1k", "1.5k", "2k"). */
+    cardAspect: string;
+    cardResolution: string;
+    /** People of a story who aren't SillyTavern characters, by "char:<avatar>" or "group:<id>". */
+    extraPeople: Record<string, ExtraPerson[]>;
+}
+
+/** Someone in the scene who isn't a SillyTavern character, e.g. a friend or a stranger from the story. */
+export interface ExtraPerson {
+    id: string;
+    name: string;
+    /** Appearance in words; the LLM draws the card from it. */
+    description: string;
+}
+
+/** A reference picture that keeps a person's face and body the same across clips. */
+export interface AppearanceCard {
+    /** Path of the saved image, e.g. "user/images/scene-video-cards/kelsey.png". */
+    image: string;
+    /** The image prompt the card was drawn from, if it was generated. */
+    prompt?: string;
+    /** CARD_PROMPT_VERSION the prompt was written for; older prompts are written again. */
+    promptVersion?: number;
 }

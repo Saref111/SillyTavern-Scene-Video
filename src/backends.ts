@@ -14,6 +14,8 @@ interface GenerateArgs {
     negative: string;
     settings: SceneVideoSettings;
     signal: AbortSignal;
+    /** Appearance card pictures (base64), referred to as <Picture 1..3> in the prompt. */
+    references?: { data: string; format: string }[];
 }
 
 function headers(): Record<string, string> {
@@ -49,7 +51,7 @@ function parseExtra(raw: string): Record<string, unknown> {
 }
 
 // OpenRouter and WaveSpeed go through the server plugin, which holds the API keys.
-async function generateCloud({ prompt, negative, settings, signal }: GenerateArgs): Promise<VideoResult> {
+async function generateCloud({ prompt, negative, settings, signal, references }: GenerateArgs): Promise<VideoResult> {
     const backend = settings.backend as 'openrouter' | 'wavespeed';
     const cfg = settings.backends[backend];
     const data = await postJson(`${PLUGIN_BASE}/generate`, {
@@ -63,6 +65,7 @@ async function generateCloud({ prompt, negative, settings, signal }: GenerateArg
         resolution: cfg.resolution || undefined,
         audio: backend === 'openrouter' ? settings.audioMode !== 'none' : undefined,
         extra: parseExtra(cfg.extra),
+        references: references?.length ? references : undefined,
     }, signal);
     return { format: data.format, data: data.data };
 }
@@ -121,6 +124,13 @@ export async function generateVideo(args: GenerateArgs): Promise<VideoResult> {
         throw new Error('The backend returned no video data.');
     }
     return result;
+}
+
+/** Draws an appearance card with a WaveSpeed text-to-image model (3:4 portrait). */
+export async function generateCardImage(prompt: string, model: string, aspect: string, resolution: string): Promise<VideoResult> {
+    const data = await postJson(`${PLUGIN_BASE}/wavespeed/image`, { prompt, model, aspect, resolution });
+    if (!data?.data) throw new Error('WaveSpeed returned no picture.');
+    return { format: data.format, data: data.data };
 }
 
 export async function listComfyWorkflows(): Promise<string[]> {

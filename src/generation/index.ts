@@ -3,6 +3,9 @@
 
 import { CAMERA_MODES } from '../defaults';
 import { generateVideo } from '../backends';
+import { cardCandidates, loadReferences, pickCards } from '../cards/pick';
+import type { CardRef } from '../cards/pick';
+import { chatPeople } from '../cards/people';
 import { setBusy } from '../chat/button';
 import { ctx } from '../core/context';
 import { look, persistClipSettings, settings } from '../core/settings';
@@ -44,18 +47,34 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
         let prompt = opts.prompt?.trim();
         let focus = opts.focus?.trim() || undefined;
         let direction = opts.direction?.trim() || undefined;
+        let allowedCards: string[] | undefined;
         if (s.preflight && !opts.quiet) {
-            const choice = await showPreflight({ settings: s, focus, direction, needsPrompt: !prompt });
+            const cards = s.useCards
+                ? (await chatPeople()).filter(p => s.cards[p.key]?.image).map(p => ({ key: p.key, name: p.name, persona: p.kind === 'persona' }))
+                : [];
+            const choice = await showPreflight({ settings: s, focus, direction, needsPrompt: !prompt, cards });
             if (!choice) return '';
             ({ settings: s, focus, direction } = choice);
+            allowedCards = choice.cardKeys;
             if (choice.saveAsDefault) {
                 persistClipSettings(s);
                 syncSettingsUI();
             }
         }
+        // Appearance cards: only when the LLM writes the prompt, since it has to refer to them.
+        let refs: CardRef[] = [];
+        if (!prompt && s.useCards && s.backend !== 'comfy') {
+            let candidates = await cardCandidates(s);
+            if (allowedCards) candidates = candidates.filter(r => allowedCards.includes(r.person.key));
+            if (candidates.length) {
+                toast = toastr.info('Choosing appearance cards…', 'Scene Video', { timeOut: 0, extendedTimeOut: 0 });
+                refs = await pickCards(messageId, s, candidates, focus, direction);
+                toastr.clear(toast);
+            }
+        }
         if (!prompt) {
             toast = toastr.info(focus ? 'Writing the video prompt for the selected fragment…' : 'Writing the video prompt…', 'Scene Video', { timeOut: 0, extendedTimeOut: 0 });
-            prompt = await writeVideoPrompt(messageId, s, focus, direction);
+            prompt = await writeVideoPrompt(messageId, s, focus, direction, refs);
             toastr.clear(toast);
         }
 
@@ -66,9 +85,12 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
                 : 'The style suffix is added automatically.';
             const camera = CAMERA_MODES[s.cameraMode]?.label ?? s.cameraMode;
             const fragment = focus ? `<br>Selected fragment: <i>«${escapeHtml(truncate(focus, 300))}»</i>` : '';
+            const cardNote = refs.length
+                ? `<br>Appearance cards: ${refs.map((r, i) => `<b>${isH3 ? `&lt;Picture ${i + 1}&gt;` : `reference image ${i + 1}`}</b> ${escapeHtml(r.person.name)}`).join(', ')}`
+                : '';
             const clip = s;
-            const edited = await reviewPrompt(prompt, `${note} Backend: <b>${s.backend}</b>, camera: <b>${camera}</b>.${fragment}`, isH3,
-                () => writeVideoPrompt(messageId, clip, focus, direction));
+            const edited = await reviewPrompt(prompt, `${note} Backend: <b>${s.backend}</b>, camera: <b>${camera}</b>.${fragment}${cardNote}`, isH3,
+                () => writeVideoPrompt(messageId, clip, focus, direction, refs));
             if (edited === null || edited === undefined || !String(edited).trim()) {
                 return '';
             }
@@ -78,7 +100,8 @@ export async function generateSceneVideo(messageId: number, opts: RunOptions = {
         const finalPrompt = buildFinalPrompt(prompt, s);
         toast = toastr.info('Generating the video. This usually takes 1–5 minutes.', 'Scene Video', { timeOut: 0, extendedTimeOut: 0 });
 
-        const video = await generateVideo({ prompt: finalPrompt, negative: look(s).negative, settings: s, signal: controller.signal });
+        const references = refs.length ? await loadReferences(refs) : undefined;
+        const video = await generateVideo({ prompt: finalPrompt, negative: look(s).negative, settings: s, signal: controller.signal, references });
         const url = await uploadVideo(video.data, video.format);
         toastr.clear(toast);
 

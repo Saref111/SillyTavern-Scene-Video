@@ -8,6 +8,8 @@ export interface PreflightInput {
     direction?: string;
     /** False when a ready prompt was given: the LLM fields are then hidden. */
     needsPrompt: boolean;
+    /** People of the chat who have an appearance card. */
+    cards?: { key: string; name: string; persona: boolean }[];
 }
 
 export interface PreflightResult {
@@ -16,6 +18,8 @@ export interface PreflightResult {
     focus?: string;
     direction?: string;
     saveAsDefault: boolean;
+    /** Card keys the LLM may use for this clip; undefined when no cards were offered. */
+    cardKeys?: string[];
 }
 
 const RESOLUTIONS = ['', '480p', '540p', '720p', '768p', '1080p', '2K', '4K'];
@@ -28,6 +32,12 @@ const SHOTS: Record<ShotMode, string> = {
 
 const esc = (text: unknown) => String(text ?? '').replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
 const options = (pairs: [string, string][]) => pairs.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+
+function cardsHtml(input: PreflightInput): string {
+    if (!input.cards?.length || !input.needsPrompt) return '';
+    const boxes = input.cards.map(c => `<label class="checkbox_label"><input type="checkbox" data-card-key="${esc(c.key)}" checked /> ${esc(c.name)}${c.persona ? ' <small>(you; skipped in POV)</small>' : ''}</label>`).join('');
+    return `<div class="pf-cards"><label>Appearance cards <small>(the LLM sends only the people on screen, at most 3)</small></label>${boxes}</div>`;
+}
 
 function formHtml(input: PreflightInput): string {
     const profiles: { id: string; name: string }[] = SillyTavern.getContext().extensionSettings.connectionManager?.profiles ?? [];
@@ -81,6 +91,7 @@ function formHtml(input: PreflightInput): string {
             <textarea data-pf="direction" class="text_pole" rows="2"></textarea>
         </label>
     </div>
+    ${cardsHtml(input)}
     <label class="checkbox_label"><input type="checkbox" data-pf="saveAsDefault" /> Save these as the default settings</label>
 </div>`;
 }
@@ -97,6 +108,7 @@ export async function showPreflight(input: PreflightInput): Promise<PreflightRes
     const renderBackend = () => {
         form.find('.pf-cloud').toggle(s.backend !== 'comfy');
         form.find('.pf-comfy').toggle(s.backend === 'comfy');
+        form.find('.pf-cards').toggle(s.backend !== 'comfy');
         const cfg = cloud();
         if (cfg) {
             field('model').val(cfg.model);
@@ -176,5 +188,8 @@ export async function showPreflight(input: PreflightInput): Promise<PreflightRes
         focus: String(field('focus').val() ?? '').trim() || undefined,
         direction: String(field('direction').val() ?? '').trim() || undefined,
         saveAsDefault: field('saveAsDefault').prop('checked'),
+        cardKeys: input.cards?.length
+            ? form.find('[data-card-key]:checked').map((_i: number, el: HTMLElement) => el.dataset.cardKey).get()
+            : undefined,
     };
 }

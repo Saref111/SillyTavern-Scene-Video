@@ -137,6 +137,17 @@ Placeholders in the instructions:
 
 If a custom instruction has no `{{shots}}`, `{{camera}}`, `{{audio}}` or `{{music}}`, that rule is appended at the end. Default instructions are upgraded automatically after an update; edited ones are kept, so add new placeholders yourself or click **Restore default prompts**.
 
+## Appearance cards
+
+An appearance card is a reference picture of a character or of your persona. The video model gets it together with the prompt, so the person's face and body stay the same in every clip. Cards are optional: without them everything works as before.
+
+- **Making a card** (magic wand menu → **Appearance cards**, or the button in the settings; one row per character of the open chat and your persona): **ST** draws it with SillyTavern's Image Generation extension and its current source, **WaveSpeed** draws it with the WaveSpeed image model from the settings (`wavespeed-ai/minimax-h3/text-to-image` by default). A card is a wide character sheet on a white background: a large portrait, the full body from the front, side and back, and a block of round close-ups (eyes, lips, ears, hair, skin) at the right edge. MiniMax H3 follows this layout best; faster models such as Krea turbo may mix the parts up. The person is shown in underwear (the kind the character would wear, or plain cotton), so the sheet shows the real figure; the video prompt always names the clothes of the clip. Both first ask the LLM to describe the person (with an explicit build), which you can edit; ST draws it at 2048×768. Your own picture works best in the same layout. You can also upload a picture or use the avatar.
+- **Other people of the story** (a friend, a stranger who isn't a SillyTavern character): **Add person**, up to 3 per character or group. Give a name and, optionally, the appearance; when it's empty, the LLM takes it from the recent messages.
+- **Choosing cards for a clip:** before writing the prompt, the LLM picks the people who are on screen, at most 3. Your persona's card is never used in first-person POV. With **Show clip settings before each generation**, you can untick cards for this clip.
+- **In the prompt** the people with cards are referred to as `<Picture 1>`… (H3) or "reference image 1" (other formats), without describing their faces.
+- **Backends:** WaveSpeed (a `…/text-to-video` model switches to its `…/reference-to-video` endpoint automatically) and OpenRouter (`input_references`; the model must support reference images). ComfyUI and a ready `prompt=` skip cards.
+- **Privacy:** video APIs need a public link, so the server plugin uploads the pictures to [uguu.se](https://uguu.se), which deletes them after 3 hours.
+
 ## Slash command
 
 ```

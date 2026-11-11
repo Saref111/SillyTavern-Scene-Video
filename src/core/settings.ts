@@ -31,6 +31,8 @@ export const save = () => ctx().saveSettingsDebounced();
 
 // Settings from before camera and audio modes: a single style/negative pair and an audio checkbox.
 function migrateLegacyFields(current: any) {
+    // The first card model default; cards are now wide character sheets drawn best by MiniMax H3.
+    if (current.cardImageModel === 'bytedance/seedream-v4.5') delete current.cardImageModel;
     if (typeof current.styleSuffix === 'string' || typeof current.negativePrompt === 'string') {
         const look = { ...CAMERA_MODES.bystander.look };
         if (typeof current.styleSuffix === 'string') look.style = current.styleSuffix;

@@ -108,6 +108,14 @@
             </select>
 
             <hr />
+            <b>Appearance cards</b>
+            <small class="scene-video-hint">Reference pictures that keep faces and bodies the same in every clip, for WaveSpeed and OpenRouter. On WaveSpeed a <code>…/text-to-video</code> model switches to its <code>…/reference-to-video</code> endpoint automatically. Pictures are uploaded to <a href="https://uguu.se" target="_blank" rel="noopener">uguu.se</a> to get a public link and are deleted there after 3 hours.</small>
+            <label class="checkbox_label"><input type="checkbox" id="scene_video_use_cards" /> Use appearance cards</label>
+            <div class="menu_button menu_button_icon" id="scene_video_open_cards"><i class="fa-solid fa-id-card"></i>Appearance cards of this chat…</div>
+            <label for="scene_video_card_model">WaveSpeed image model for drawing cards</label>
+            <input id="scene_video_card_model" class="text_pole" placeholder="wavespeed-ai/minimax-h3/text-to-image" />
+
+            <hr />
             <b>Prompt</b>
             <label for="scene_video_profile">LLM for writing prompts</label>
             <select id="scene_video_profile" class="text_pole"></select>

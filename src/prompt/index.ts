@@ -1,6 +1,7 @@
 // Writes the video prompt for a message: optional planning step, then the prompt itself.
 
-import { PLAN_INSTRUCTION } from '../defaults';
+import { CARD_RULES, PLAN_INSTRUCTION } from '../defaults';
+import type { CardRef } from '../cards/pick';
 import type { SceneVideoSettings } from '../defaults';
 import { look } from '../core/settings';
 import { cleanText } from '../core/text';
@@ -11,11 +12,21 @@ import { applyTemplate } from './template';
 
 export { resolvePromptFormat } from './format';
 
-export async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string, direction?: string): Promise<string> {
+/** Tells the LLM which person each reference picture shows. */
+function referencesBlock(refs: CardRef[], h3: boolean): string {
+    const lines = refs.map((r, i) => `${h3 ? `<Picture ${i + 1}>` : `reference image ${i + 1}`}: ${r.person.name}${r.person.kind === 'persona' ? ' (the user)' : ''}`);
+    return `[Reference pictures sent to the video model. Never write these names in the prompt; use the tags]\n${lines.join('\n')}`;
+}
+
+export async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string, direction?: string, refs: CardRef[] = []): Promise<string> {
     const format = resolvePromptFormat(s);
     const h3 = format === 'minimax-h3';
-    const system = applyTemplate(h3 ? s.systemPromptH3 : s.systemPrompt, s, h3);
-    const scene = buildSceneContext(messageId, s, focus, direction);
+    let system = applyTemplate(h3 ? s.systemPromptH3 : s.systemPrompt, s, h3);
+    let scene = buildSceneContext(messageId, s, focus, direction);
+    if (refs.length) {
+        system += `\n\n${h3 ? CARD_RULES.h3 : CARD_RULES.generic}`;
+        scene += `\n\n${referencesBlock(refs, h3)}`;
+    }
 
     let plan = '';
     if (s.twoStep) {

@@ -29,4 +29,10 @@ export const DEFAULT_SETTINGS: SceneVideoSettings = {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     systemPromptH3: DEFAULT_SYSTEM_PROMPT_H3,
     looks: defaultLooks(),
+    useCards: true,
+    cards: {},
+    cardImageModel: 'wavespeed-ai/minimax-h3/text-to-image',
+    cardAspect: '16:9',
+    cardResolution: '1k',
+    extraPeople: {},
 };
