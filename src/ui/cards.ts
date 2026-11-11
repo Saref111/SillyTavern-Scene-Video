@@ -2,13 +2,16 @@
 // Appearance cards popup: one row per person of the open chat, plus extra people of the story.
 
 import { CARD_ASPECTS, CARD_PROMPT_VERSION, CARD_RESOLUTIONS, MAX_CARDS, MAX_EXTRA_PEOPLE, cardPixels } from '../defaults';
-import { cardFromAvatar, cardFromFile, confirmCardPrompt, drawWithSillyTavern, drawWithWaveSpeed, writeCardPrompt } from '../cards/create';
+import type { CardProvider } from '../defaults';
+import { CARD_PROVIDERS, cardFromAvatar, cardFromFile, cardModel, confirmCardPrompt, drawCard, writeCardPrompt } from '../cards/create';
 import { addExtraPerson, chatPeople, chatScope, extraPeople, removeExtraPerson, updateExtraPerson } from '../cards/people';
 import type { Person } from '../cards/people';
 import { getCard, removeCard } from '../cards/store';
 import { ctx } from '../core/context';
 import { save, settings } from '../core/settings';
 import { escapeHtml } from '../core/text';
+import { knownModels, loadErrors, loadModels } from './models';
+import type { ModelSource } from './models';
 
 let people: Person[] = [];
 let busyKey: string | null = null;
@@ -40,8 +43,7 @@ function rowHtml(p: Person): string {
         <div class="scene-video-card-head">${heading}</div>
         ${description}
         <div class="flex-container flexGap5">
-            <div class="menu_button menu_button_icon" data-card="st" title="Draw a sheet from a description with SillyTavern's Image Generation"><i class="fa-solid fa-paintbrush"></i>ST</div>
-            <div class="menu_button menu_button_icon" data-card="wavespeed" title="Draw a sheet from a description with the WaveSpeed image model from the settings"><i class="fa-solid fa-paintbrush"></i>WaveSpeed</div>
+            <div class="menu_button menu_button_icon" data-card="draw" title="Draw a character sheet from a description with the provider and model above"><i class="fa-solid fa-paintbrush"></i>Draw</div>
             <div class="menu_button fa-solid fa-upload" data-card="file" title="Use a picture from your computer"></div>
             ${p.avatarUrl ? '<div class="menu_button fa-solid fa-id-badge" data-card="avatar" title="Use the avatar as is"></div>' : ''}
             ${card ? '<div class="menu_button fa-solid fa-image" data-card="remove" title="Remove the picture"></div>' : ''}
@@ -79,7 +81,7 @@ async function run(person: Person, action: () => Promise<void>) {
     }
 }
 
-async function draw(person: Person, source: 'st' | 'wavespeed') {
+async function draw(person: Person) {
     const saved = getCard(person.key);
     let prompt = saved?.promptVersion === CARD_PROMPT_VERSION ? (saved.prompt ?? '') : '';
     if (!prompt) {
@@ -95,7 +97,7 @@ async function draw(person: Person, source: 'st' | 'wavespeed') {
     }
     const final = await confirmCardPrompt(person, prompt);
     if (!final) return;
-    await run(person, () => source === 'st' ? drawWithSillyTavern(person, final) : drawWithWaveSpeed(person, final));
+    await run(person, () => drawCard(person, final));
 }
 
 function personOf(el: HTMLElement): Person | undefined {
@@ -112,8 +114,7 @@ async function onAction(this: HTMLElement) {
     const person = personOf(this);
     if (!person || busyKey) return;
     switch (action) {
-        case 'st': return draw(person, 'st');
-        case 'wavespeed': return draw(person, 'wavespeed');
+        case 'draw': return draw(person);
         case 'avatar': return run(person, () => cardFromAvatar(person));
         case 'file':
             fileTarget = person;
@@ -131,13 +132,67 @@ async function onAction(this: HTMLElement) {
     }
 }
 
+const MODEL_SOURCES: Partial<Record<CardProvider, ModelSource>> = {
+    wavespeed: 'wavespeed-image',
+    openrouter: 'openrouter-image',
+    comfy: 'comfy-workflow',
+};
+
+function setCardModel(value: string) {
+    const s = settings();
+    if (s.cardProvider === 'wavespeed') s.cardImageModel = value;
+    else if (s.cardProvider === 'openrouter') s.cardOpenRouterModel = value;
+    else if (s.cardProvider === 'comfy') s.cardComfyWorkflow = value;
+    save();
+}
+
+/** Fills the model select for the chosen provider: built-in suggestions first, the service's list when it arrives. */
+async function renderModels(force = false) {
+    if (!root) return;
+    const provider = settings().cardProvider;
+    const source = MODEL_SOURCES[provider];
+    const status = root.find('.scene-video-card-model-status');
+    root.find('.scene-video-card-model').toggle(!!source);
+    if (!source) {
+        status.text('Uses the source and model from SillyTavern\'s Image Generation settings.');
+        return;
+    }
+    const fill = () => {
+        const select = root.find('[data-card-model]').empty();
+        const current = cardModel(provider);
+        const models = knownModels(source);
+        if (provider === 'comfy') select.append('<option value="">— select a workflow —</option>');
+        for (const m of models) select.append($('<option></option>').val(m.id).text(m.label));
+        if (current && !models.some(m => m.id === current)) select.append($('<option></option>').val(current).text(current));
+        select.val(current);
+    };
+    fill();
+    status.text('Loading the list…');
+    await loadModels(source, force);
+    if (!root || settings().cardProvider !== provider) return;
+    fill();
+    const error = loadErrors[source];
+    const count = knownModels(source).length;
+    status.text(error
+        ? `⚠️ Could not load the list (${error}); showing the built-in one.`
+        : provider === 'comfy'
+            ? `${count} workflows. An image workflow with "%prompt%", "%width%" and "%height%" placeholders.`
+            : `${count} image models.`);
+}
+
 /** Opens the appearance cards of the current chat. */
 export async function openCardsPopup() {
     const c = ctx();
     root = $(`
 <div class="scene-video-cards-popup">
     <h3>Appearance cards</h3>
-    <small class="scene-video-hint">Reference pictures that keep faces and bodies the same in every clip. <b>ST</b> and <b>WaveSpeed</b> draw a character sheet from a description the LLM writes. For each clip the LLM sends the cards of the people on screen, at most ${MAX_CARDS}; your persona's card is skipped in first-person POV. Add up to ${MAX_EXTRA_PEOPLE} other people of the story; they stay with this character or group.</small>
+    <small class="scene-video-hint">Reference pictures that keep faces and bodies the same in every clip. <b>Draw</b> makes a character sheet from a description the LLM writes, with the provider and model below. For each clip the LLM sends the cards of the people on screen, at most ${MAX_CARDS}; your persona's card is skipped in first-person POV. Add up to ${MAX_EXTRA_PEOPLE} other people of the story; they stay with this character or group.</small>
+    <div class="scene-video-card-size flex-container flexGap5 alignItemsCenter">
+        <label>Provider <select class="text_pole" data-card-provider>${Object.entries(CARD_PROVIDERS).map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}</select></label>
+        <label class="scene-video-card-model flex1">Model <select class="text_pole" data-card-model></select></label>
+        <div class="menu_button fa-solid fa-rotate scene-video-card-model" data-card-models-refresh title="Load the list again"></div>
+    </div>
+    <small class="scene-video-hint scene-video-card-model-status"></small>
     <div class="scene-video-card-size flex-container flexGap5 alignItemsCenter">
         <label>Picture shape <select class="text_pole" data-size="cardAspect">${CARD_ASPECTS.map(a => `<option value="${a}">${a}</option>`).join('')}</select></label>
         <label>Resolution <select class="text_pole" data-size="cardResolution">${Object.keys(CARD_RESOLUTIONS).map(r => `<option value="${r}">${r}</option>`).join('')}</select></label>
@@ -162,6 +217,17 @@ export async function openCardsPopup() {
         showPixels();
     });
     showPixels();
+    root.find('[data-card-provider]').val(settings().cardProvider);
+    root.on('change', '[data-card-provider]', function (this: HTMLSelectElement) {
+        settings().cardProvider = this.value as CardProvider;
+        save();
+        renderModels();
+    });
+    root.on('change', '[data-card-model]', function (this: HTMLSelectElement) {
+        setCardModel(this.value);
+    });
+    root.on('click', '[data-card-models-refresh]', () => renderModels(true));
+    renderModels();
     root.on('click', '[data-card]', onAction);
     root.on('change', '[data-extra-field]', function (this: HTMLInputElement) {
         const person = personOf(this);

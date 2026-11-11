@@ -21,6 +21,9 @@ const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 
 const OR_BASE = 'https://openrouter.ai/api/v1';
 const WS_BASE = 'https://api.wavespeed.ai/api/v3';
+/** WaveSpeed's model catalog per API key, cached for an hour. */
+const wavespeedModelsCache = new Map();
+const WAVESPEED_MODELS_CACHE_MS = 60 * 60 * 1000;
 // Reference pictures need public URLs: they go to uguu.se, which deletes files after 3 hours.
 const IMAGE_HOST_URL = 'https://uguu.se/upload';
 const IMAGE_HOST_CACHE_MS = 2 * 60 * 60 * 1000;
@@ -332,11 +335,36 @@ export async function init(router) {
 
     router.post('/openrouter/models', async (request, res) => {
         try {
-            const key = getKey(request, SECRET_OPENROUTER, 'OpenRouter');
+            // The list is public; the key is sent when there is one.
+            const key = readSecret(request.user.directories, SECRET_OPENROUTER);
             const data = await fetchJson(`${OR_BASE}/videos/models`, {
-                headers: { ...OR_HEADERS, 'Authorization': `Bearer ${key}` },
+                headers: { ...OR_HEADERS, ...(key ? { 'Authorization': `Bearer ${key}` } : {}) },
             }, 'OpenRouter models');
             res.send(data);
+        } catch (error) {
+            res.status(error.status || 500).send(error.message);
+        }
+    });
+
+    // WaveSpeed's catalog depends on the account, so it needs the key. Only models that take a prompt are
+    // listed: text-to-video (the extension switches to reference-to-video for cards itself) or, with
+    // { kind: 'image' }, text-to-image for drawing cards.
+    router.post('/wavespeed/models', async (request, res) => {
+        try {
+            const key = getKey(request, SECRET_WAVESPEED, 'WaveSpeed');
+            let catalog = wavespeedModelsCache.get(key);
+            if (!catalog || Date.now() - catalog.at >= WAVESPEED_MODELS_CACHE_MS) {
+                const data = await fetchJson(`${WS_BASE}/models`, { headers: { 'Authorization': `Bearer ${key}` } }, 'WaveSpeed models');
+                catalog = { at: Date.now(), models: Array.isArray(data?.data) ? data.data : [] };
+                wavespeedModelsCache.set(key, catalog);
+            }
+            const type = request.body?.kind === 'image' ? 'text-to-image' : 'text-to-video';
+            const pattern = new RegExp(`/${type}(-[\\w-]+)?$`);
+            const models = catalog.models
+                .filter(m => m?.model_id && (m.type === type || pattern.test(m.model_id)))
+                .map(m => ({ id: m.model_id, name: m.name || m.model_id, price: typeof m.base_price === 'number' ? m.base_price : null }))
+                .sort((a, b) => a.id.localeCompare(b.id));
+            res.send(models);
         } catch (error) {
             res.status(error.status || 500).send(error.message);
         }

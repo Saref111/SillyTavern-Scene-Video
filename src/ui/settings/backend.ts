@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Backend section of the settings panel: model list, resolution, ComfyUI workflows, plugin status.
 
-import { MODEL_SUGGESTIONS } from '../../defaults';
 import { getPluginStatus, listComfyWorkflows, PLUGIN_BASE } from '../../backends';
 import { ctx } from '../../core/context';
 import { settings } from '../../core/settings';
 import { escapeHtml } from '../../core/text';
 import { resolvePromptFormat } from '../../prompt';
+import { knownModels, loadErrors, loadModels } from '../models';
 
 export async function refreshPluginStatus() {
     const s = settings();
@@ -48,7 +48,7 @@ export function renderBackendSection() {
         renderModelSelect();
         setSelectValue('#scene_video_resolution', cfg.resolution);
         $('#scene_video_extra').val(cfg.extra);
-        if (b === 'openrouter') loadOpenRouterModels();
+        refreshModels();
     } else {
         refreshComfyWorkflows();
     }
@@ -57,10 +57,6 @@ export function renderBackendSection() {
 }
 
 export const CUSTOM_MODEL = '__custom__';
-
-/** Video models fetched from OpenRouter. Null until loaded, then cached for the session. */
-let openRouterModels: string[] | null = null;
-let openRouterModelsLoading = false;
 
 /** Sets a <select> value and adds the option if it isn't in the list (e.g. a value saved earlier). */
 export function setSelectValue(selector: string, value: string) {
@@ -75,34 +71,29 @@ export function renderModelSelect() {
     const s = settings();
     if (s.backend === 'comfy') return;
     const current = s.backends[s.backend].model;
-    const known = s.backend === 'openrouter' && openRouterModels?.length
-        ? [...new Set([...MODEL_SUGGESTIONS.openrouter, ...openRouterModels])]
-        : MODEL_SUGGESTIONS[s.backend];
+    const known = knownModels(s.backend);
 
     const select = $('#scene_video_model_select').empty();
-    for (const id of known) select.append($('<option></option>').val(id).text(id));
+    for (const m of known) select.append($('<option></option>').val(m.id).text(m.label));
     select.append($('<option></option>').val(CUSTOM_MODEL).text('Custom…'));
 
-    const isKnown = known.includes(current);
+    const isKnown = known.some(m => m.id === current);
     select.val(isKnown ? current : CUSTOM_MODEL);
     $('#scene_video_model').val(current).toggle(!isKnown);
 }
 
-export async function loadOpenRouterModels() {
-    if (openRouterModels || openRouterModelsLoading) return;
-    openRouterModelsLoading = true;
-    try {
-        const res = await fetch(`${PLUGIN_BASE}/openrouter/models`, { method: 'POST', headers: ctx().getRequestHeaders() });
-        if (!res.ok) return;
-        const data = await res.json();
-        const models: any[] = data.data ?? data;
-        openRouterModels = models.map(m => String(m.id)).filter(Boolean).sort();
-        if (settings().backend === 'openrouter') renderModelSelect();
-    } catch (error) {
-        console.warn('[Scene Video] Could not load OpenRouter models', error);
-    } finally {
-        openRouterModelsLoading = false;
-    }
+/** Loads the selected service's models into the select; `force` asks the service again. */
+export async function refreshModels(force = false) {
+    const backend = settings().backend;
+    if (backend === 'comfy') return;
+    const status = $('#scene_video_models_status').text('Loading the models…');
+    await loadModels(backend, force);
+    if (settings().backend !== backend) return;
+    renderModelSelect();
+    const error = loadErrors[backend];
+    status.text(error
+        ? `⚠️ Could not load the models (${error}); showing the built-in list.`
+        : `${knownModels(backend).length} models of ${backend === 'openrouter' ? 'OpenRouter' : 'WaveSpeed'}.`);
 }
 
 export function renderPromptFormat() {

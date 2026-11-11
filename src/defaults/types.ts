@@ -64,12 +64,20 @@ export interface SceneVideoSettings {
     cards: Record<string, AppearanceCard>;
     /** WaveSpeed text-to-image model used to draw cards. */
     cardImageModel: string;
+    /** Who draws cards: SillyTavern's Image Generation, WaveSpeed, OpenRouter or a ComfyUI workflow. */
+    cardProvider: CardProvider;
+    /** OpenRouter image model for cards. */
+    cardOpenRouterModel: string;
+    /** ComfyUI image workflow for cards (from SillyTavern's workflows). */
+    cardComfyWorkflow: string;
     /** Card picture shape, e.g. "16:9", and resolution tier ("1k", "1.5k", "2k"). */
     cardAspect: string;
     cardResolution: string;
     /** People of a story who aren't SillyTavern characters, by "char:<avatar>" or "group:<id>". */
     extraPeople: Record<string, ExtraPerson[]>;
 }
+
+export type CardProvider = 'st' | 'wavespeed' | 'openrouter' | 'comfy';
 
 /** Someone in the scene who isn't a SillyTavern character, e.g. a friend or a stranger from the story. */
 export interface ExtraPerson {

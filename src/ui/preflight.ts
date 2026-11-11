@@ -1,6 +1,8 @@
 // Pre-generation popup: per-clip settings that can be changed before every video without opening the settings panel.
-import { Aspect, AUDIO_MODES, AudioMode, BackendId, CAMERA_MODES, CameraMode, H3_MODEL_PATTERN, MODEL_SUGGESTIONS, SceneVideoSettings, ShotMode } from '../defaults';
+import { Aspect, AUDIO_MODES, AudioMode, BackendId, CAMERA_MODES, CameraMode, H3_MODEL_PATTERN, SceneVideoSettings, ShotMode } from '../defaults';
 import { listComfyWorkflows } from '../backends';
+import { knownModels, loadModels } from './models';
+import type { CloudBackend, ModelOption } from './models';
 
 export interface PreflightInput {
     settings: SceneVideoSettings;
@@ -112,8 +114,13 @@ export async function showPreflight(input: PreflightInput): Promise<PreflightRes
         const cfg = cloud();
         if (cfg) {
             field('model').val(cfg.model);
-            const list = form.find('#scene_video_pf_models').empty();
-            for (const id of MODEL_SUGGESTIONS[s.backend as 'openrouter' | 'wavespeed']) list.append($('<option></option>').val(id));
+            const backend = s.backend as CloudBackend;
+            const fill = (models: ModelOption[]) => {
+                const list = form.find('#scene_video_pf_models').empty();
+                for (const m of models) list.append($('<option></option>').val(m.id).text(m.label));
+            };
+            fill(knownModels(backend));
+            loadModels(backend).then(models => { if (s.backend === backend) fill(models); });
             const res = field('resolution');
             if (cfg.resolution && !res.find('option').filter((_i: number, o: HTMLOptionElement) => o.value === cfg.resolution).length) {
                 res.append($('<option></option>').val(cfg.resolution).text(cfg.resolution));

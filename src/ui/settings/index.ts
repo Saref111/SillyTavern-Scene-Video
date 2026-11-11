@@ -7,7 +7,7 @@ import type { Aspect, AudioMode, BackendId, CameraMode, PromptFormat, ShotMode }
 import { saveWaveSpeedKey } from '../../backends';
 import { syncButtons } from '../../chat/button';
 import { cloudCfg, look, save, settings } from '../../core/settings';
-import { CUSTOM_MODEL, refreshComfyWorkflows, refreshPluginStatus, renderBackendSection, renderPromptFormat, showOpenRouterModels } from './backend';
+import { CUSTOM_MODEL, refreshComfyWorkflows, refreshModels, refreshPluginStatus, renderBackendSection, renderPromptFormat, showOpenRouterModels } from './backend';
 import { openCardsPopup } from '../cards';
 import { initProfileSelect } from './profile';
 
@@ -29,7 +29,6 @@ export function syncSettingsUI() {
     $('#scene_video_response_length').val(s.responseLength);
     $('#scene_video_two_step').prop('checked', s.twoStep);
     $('#scene_video_use_cards').prop('checked', s.useCards);
-    $('#scene_video_card_model').val(s.cardImageModel);
     $('#scene_video_profile').val(s.promptProfile);
     $('#scene_video_system').val(s.systemPrompt);
     $('#scene_video_format').val(s.promptFormat);
@@ -95,7 +94,6 @@ export function initSettingsUI() {
     bindInput('#scene_video_aspect', v => { look(settings()).aspect = v as Aspect; });
     bindInput('#scene_video_two_step', (_v, c) => { settings().twoStep = c; });
     bindInput('#scene_video_use_cards', (_v, c) => { settings().useCards = c; });
-    bindInput('#scene_video_card_model', v => { settings().cardImageModel = v.trim() || DEFAULT_SETTINGS.cardImageModel; });
     bindInput('#scene_video_shots', v => { settings().shotMode = v as ShotMode; });
     bindInput('#scene_video_camera', v => { settings().cameraMode = v as CameraMode; renderLook(); });
     bindInput('#scene_video_audio_mode', v => { settings().audioMode = v as AudioMode; });
@@ -107,6 +105,7 @@ export function initSettingsUI() {
 
     $('#scene_video_comfy_refresh').on('click', refreshComfyWorkflows);
     $('#scene_video_or_models').on('click', showOpenRouterModels);
+    $('#scene_video_models_refresh').on('click', () => refreshModels(true));
     $('#scene_video_ws_key_save').on('click', async () => {
         const value = String($('#scene_video_ws_key').val() ?? '').trim();
         if (!value) return;

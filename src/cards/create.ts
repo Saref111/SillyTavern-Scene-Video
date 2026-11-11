@@ -1,9 +1,11 @@
-// Making an appearance card (a character sheet): drawn from an LLM-written description by
-// SillyTavern's image generation or a WaveSpeed model, or taken as is from a file or the avatar.
+// Making an appearance card (a character sheet): drawn from an LLM-written description by the provider
+// chosen in the cards popup (SillyTavern's Image Generation, WaveSpeed, OpenRouter or a ComfyUI workflow),
+// or taken as is from a file or the avatar.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { CardProvider } from '../defaults';
 import { CARD_DEFAULT_UNDERWEAR, CARD_NUDITY, CARD_UNDERWEAR, CARD_PROMPT_INSTRUCTION, CARD_PROMPT_VERSION, cardPixels, sheetFromTextPrompt } from '../defaults';
-import { generateCardImage } from '../backends';
+import { generateCardImage, generateComfyImage } from '../backends';
 import { ctx } from '../core/context';
 import { settings } from '../core/settings';
 import { cleanText, truncate } from '../core/text';
@@ -102,29 +104,83 @@ async function checkShape(url: string) {
     }
 }
 
-/** Draws with SillyTavern's Image Generation extension and its current source. */
-export async function drawWithSillyTavern(person: Person, description: string) {
-    const prompt = sheetFromTextPrompt(description, '');
-    const command = ctx().SlashCommandParser?.commands?.imagine;
-    if (!command) throw new Error('Enable SillyTavern\'s Image Generation extension to draw cards with it.');
-    // Calling the command directly avoids slash-command parsing of the prompt text.
+export const CARD_PROVIDERS: Record<CardProvider, string> = {
+    st: 'SillyTavern Image Generation',
+    wavespeed: 'WaveSpeed',
+    openrouter: 'OpenRouter',
+    comfy: 'ComfyUI',
+};
+
+/** The model (or ComfyUI workflow) the provider draws with; SillyTavern uses its own settings. */
+export function cardModel(provider: CardProvider = settings().cardProvider): string {
     const s = settings();
-    const { width, height } = cardPixels(s.cardAspect, s.cardResolution);
-    const url = await command.callback({ quiet: 'true', gallery: 'false', width: String(width), height: String(height) }, prompt);
-    if (!url) throw new Error('Image Generation returned no picture. Check its settings.');
-    setCard(person.key, { image: String(url), prompt: description, promptVersion: CARD_PROMPT_VERSION });
-    await checkShape(String(url));
+    switch (provider) {
+        case 'wavespeed': return s.cardImageModel;
+        case 'openrouter': return s.cardOpenRouterModel;
+        case 'comfy': return s.cardComfyWorkflow;
+        default: return '';
+    }
 }
 
-export async function drawWithWaveSpeed(person: Person, description: string) {
+/** OpenRouter takes an aspect ratio from a fixed list (image_config.aspect_ratio). */
+const OPENROUTER_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+
+function closestRatio(aspect: string, options: string[]): string {
+    const value = (r: string) => { const [w, h] = r.split(':').map(Number); return w / h; };
+    const target = value(aspect) || 16 / 9;
+    return [...options].sort((a, b) => Math.abs(value(a) - target) - Math.abs(value(b) - target))[0];
+}
+
+/** SillyTavern's Image Generation extension with its current source; returns the picture's path. */
+async function drawSillyTavern(prompt: string): Promise<string> {
+    const command = ctx().SlashCommandParser?.commands?.imagine;
+    if (!command) throw new Error('Enable SillyTavern\'s Image Generation extension to draw cards with it.');
     const s = settings();
-    const model = s.cardImageModel;
-    const image = await generateCardImage(sheetFromTextPrompt(description, model), model, s.cardAspect, s.cardResolution);
-    const url = await saveImage(image.data, image.format, person);
+    const { width, height } = cardPixels(s.cardAspect, s.cardResolution);
+    // Calling the command directly avoids slash-command parsing of the prompt text.
+    const url = await command.callback({ quiet: 'true', gallery: 'false', width: String(width), height: String(height) }, prompt);
+    if (!url) throw new Error('Image Generation returned no picture. Check its settings.');
+    return String(url);
+}
+
+/** OpenRouter through SillyTavern's endpoint (the key from SillyTavern's API connections). */
+async function drawOpenRouter(prompt: string, model: string): Promise<{ data: string; format: string }> {
+    const res = await fetch('/api/openrouter/image/generate', {
+        method: 'POST',
+        headers: ctx().getRequestHeaders(),
+        body: JSON.stringify({ model, prompt, aspect_ratio: closestRatio(settings().cardAspect, OPENROUTER_RATIOS) }),
+    });
+    if (!res.ok) {
+        const text = (await res.text()).trim();
+        throw new Error(`OpenRouter could not draw the picture: ${text && !text.startsWith('<') ? text : `HTTP ${res.status}`}. Check the key and the model in SillyTavern.`);
+    }
+    const data = await res.json();
+    if (!data?.image) throw new Error('OpenRouter returned no picture.');
+    return { data: data.image, format: data.format || 'png' };
+}
+
+/** Draws the person's character sheet from a description with the chosen provider and saves it as the card. */
+export async function drawCard(person: Person, description: string) {
+    const s = settings();
+    const provider = s.cardProvider;
+    const model = cardModel(provider);
+    if (provider !== 'st' && !model) throw new Error(`Choose a ${provider === 'comfy' ? 'workflow' : 'model'} for ${CARD_PROVIDERS[provider]} in the cards popup.`);
+    const prompt = sheetFromTextPrompt(description, model);
+    let url: string;
+    if (provider === 'st') {
+        url = await drawSillyTavern(prompt);
+    } else {
+        const { width, height } = cardPixels(s.cardAspect, s.cardResolution);
+        const image = provider === 'wavespeed'
+            ? await generateCardImage(prompt, model, s.cardAspect, s.cardResolution)
+            : provider === 'openrouter'
+                ? await drawOpenRouter(prompt, model)
+                : await generateComfyImage(prompt, model, s.comfyUrl, width, height);
+        url = await saveImage(image.data, image.format, person);
+    }
     setCard(person.key, { image: url, prompt: description, promptVersion: CARD_PROMPT_VERSION });
     await checkShape(url);
 }
-
 
 export async function cardFromFile(person: Person, file: File) {
     const image = await blobToBase64(file);

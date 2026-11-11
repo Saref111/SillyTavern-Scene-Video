@@ -99,3 +99,15 @@
     display: inline-block;
     margin: 0 0 0 4px;
 }
+
+.scene-video-card-size label.scene-video-card-model {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.scene-video-card-size label.scene-video-card-model select.text_pole {
+    flex: 1;
+    min-width: 0;
+}

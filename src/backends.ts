@@ -126,10 +126,31 @@ export async function generateVideo(args: GenerateArgs): Promise<VideoResult> {
     return result;
 }
 
-/** Draws an appearance card with a WaveSpeed text-to-image model (3:4 portrait). */
+/** Draws an appearance card with a WaveSpeed text-to-image model. */
 export async function generateCardImage(prompt: string, model: string, aspect: string, resolution: string): Promise<VideoResult> {
     const data = await postJson(`${PLUGIN_BASE}/wavespeed/image`, { prompt, model, aspect, resolution });
     if (!data?.data) throw new Error('WaveSpeed returned no picture.');
+    return { format: data.format, data: data.data };
+}
+
+/**
+ * Draws a picture with a ComfyUI image workflow (an appearance card). Placeholders as in SillyTavern's
+ * Image Generation: "%prompt%", "%negative_prompt%", "%seed%", "%width%", "%height%".
+ */
+export async function generateComfyImage(prompt: string, workflowName: string, url: string, width: number, height: number): Promise<VideoResult> {
+    const wfRes = await fetch('/api/sd/comfy/workflow', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ file_name: workflowName }),
+    });
+    if (!wfRes.ok) throw new Error(`Failed to load workflow: ${await wfRes.text()}`);
+    const values: Record<string, unknown> = { prompt, negative_prompt: '', seed: Math.floor(Math.random() * 2 ** 32), width, height };
+    let workflow: string = await wfRes.json();
+    for (const [key, value] of Object.entries(values)) {
+        workflow = workflow.replaceAll(`"%${key}%"`, JSON.stringify(value));
+    }
+    const data = await postJson('/api/sd/comfy/generate', { url, prompt: `{"prompt": ${workflow}}` });
+    if (!data?.data) throw new Error('ComfyUI returned no picture.');
     return { format: data.format, data: data.data };
 }
 
