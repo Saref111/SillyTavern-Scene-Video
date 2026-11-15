@@ -4,15 +4,15 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { CardProvider } from '../defaults';
-import { CARD_DEFAULT_UNDERWEAR, CARD_NUDITY, CARD_UNDERWEAR, CARD_PROMPT_INSTRUCTION, CARD_PROMPT_VERSION, cardPixels, sheetFromTextPrompt } from '../defaults';
-import { generateCardImage, generateComfyImage } from '../backends';
+import { CARD_DEFAULT_UNDERWEAR, CARD_NUDITY, CARD_OUTFIT_RULES, CARD_UNDERWEAR, CARD_PROMPT_INSTRUCTION, CARD_PROMPT_VERSION, cardPixels, sheetFromPicturePrompt, sheetFromTextPrompt } from '../defaults';
+import { generateCardImage, generateComfyImage, generateOpenRouterCardImage } from '../backends';
 import { ctx } from '../core/context';
 import { settings } from '../core/settings';
 import { cleanText, truncate } from '../core/text';
 import { cleanLlmOutput } from '../prompt/format';
 import { callLlm } from '../prompt/llm';
 import type { Person } from './people';
-import { setCard } from './store';
+import { getReference, setCard, setReference } from './store';
 
 const CARD_FOLDER = 'scene-video-cards';
 
@@ -30,10 +30,20 @@ export async function writeCardPrompt(person: Person): Promise<string> {
     } else {
         task = `[Person description]\n${description || 'No description. Draw an ordinary adult.'}`;
     }
-    const raw = await callLlm(settings(), CARD_PROMPT_INSTRUCTION, `${task}\n\nWrite the description now.`, 400);
+    const s = settings();
+    const instruction = CARD_PROMPT_INSTRUCTION.replace('{{outfit}}', CARD_OUTFIT_RULES[s.cardOutfit] ?? CARD_OUTFIT_RULES.underwear);
+    const raw = await callLlm(s, instruction, `${task}\n\nWrite the description now.`, 400);
     const text = cleanText(cleanLlmOutput(raw)).replace(/^["'«]|["'»]$/g, '').trim();
     if (!text) throw new Error('The LLM returned an empty description.');
-    return withUnderwear(text);
+    return s.cardOutfit === 'nude' ? withNudity(text) : withUnderwear(text);
+}
+
+/** A nude card: sentences about clothing are dropped and "fully nude, barefoot" is added if missing. */
+export function withNudity(description: string): string {
+    const sentences = description.match(/[^.!?]+[.!?]*/g) ?? [description];
+    let text = sentences.filter(s => !CARD_UNDERWEAR.test(s) && !/\b(dressed|outfit|clothes|clothing|shirt|t-shirt|top|blouse|sweater|hoodie|jacket|coat|jeans|pants|trousers|shorts|dress|skirt|socks|shoes|sneakers|boots|heels)\b/i.test(s)).join('').trim();
+    if (!CARD_NUDITY.test(text)) text = `${text} Fully nude, barefoot.`.trim();
+    return text;
 }
 
 /** The card always shows underwear: sentences about nudity are dropped and default underwear is added if none is named. */
@@ -55,7 +65,7 @@ export async function confirmCardPrompt(person: Person, prompt: string): Promise
     return text || null;
 }
 
-async function saveImage(base64: string, format: string, person: Person): Promise<string> {
+async function saveImage(base64: string, format: string, person: Person, suffix = ''): Promise<string> {
     const c = ctx();
     const res = await fetch('/api/images/upload', {
         method: 'POST',
@@ -64,7 +74,7 @@ async function saveImage(base64: string, format: string, person: Person): Promis
             image: base64,
             format: format || 'png',
             ch_name: CARD_FOLDER,
-            filename: `${person.name}_${c.humanizedDateTime()}`.replace(/[^\w-]+/g, '_'),
+            filename: `${person.name}${suffix ? `_${suffix}` : ''}_${c.humanizedDateTime()}`.replace(/[^\w-]+/g, '_'),
         }),
     });
     if (!res.ok) throw new Error(`Saving the card failed: ${await res.text()}`);
@@ -159,9 +169,42 @@ async function drawOpenRouter(prompt: string, model: string): Promise<{ data: st
     return { data: data.image, format: data.format || 'png' };
 }
 
-/** Draws the person's character sheet from a description with the chosen provider and saves it as the card. */
+/** Draws the sheet from the person's reference picture (WaveSpeed edit model or OpenRouter); returns the saved path. */
+async function drawFromReference(person: Person, description: string, reference: string): Promise<string> {
+    const s = settings();
+    const provider = s.cardProvider;
+    if (provider !== 'wavespeed' && provider !== 'openrouter') {
+        throw new Error(`${CARD_PROVIDERS[provider]} can't draw from a reference picture. Choose WaveSpeed or OpenRouter, or remove the reference of ${person.name}.`);
+    }
+    const model = provider === 'wavespeed' ? s.cardEditModel : s.cardOpenRouterModel;
+    if (!model) throw new Error('Choose a model for drawing from a reference in the cards popup.');
+    const picture = await imageToBase64(reference);
+    const prompt = sheetFromPicturePrompt(description, model);
+    const image = provider === 'wavespeed'
+        ? await generateCardImage(prompt, model, s.cardAspect, s.cardResolution, [picture])
+        : await generateOpenRouterCardImage(prompt, model, closestRatio(s.cardAspect, OPENROUTER_RATIOS), [picture]);
+    return saveImage(image.data, image.format, person);
+}
+
+/** Saves a picture from the user's computer as the person's reference for drawing. */
+export async function referenceFromFile(person: Person, file: File) {
+    const image = await blobToBase64(file);
+    setReference(person.key, await saveImage(image.data, image.format, person, 'ref'));
+}
+
+/**
+ * Draws the person's character sheet with the chosen provider and saves it as the card: from the reference
+ * picture when there is one (the description adds the build and underwear), otherwise from the description.
+ */
 export async function drawCard(person: Person, description: string) {
     const s = settings();
+    const reference = getReference(person.key);
+    if (reference) {
+        const url = await drawFromReference(person, description, reference);
+        setCard(person.key, { image: url, prompt: description, promptVersion: CARD_PROMPT_VERSION, outfit: s.cardOutfit });
+        await checkShape(url);
+        return;
+    }
     const provider = s.cardProvider;
     const model = cardModel(provider);
     if (provider !== 'st' && !model) throw new Error(`Choose a ${provider === 'comfy' ? 'workflow' : 'model'} for ${CARD_PROVIDERS[provider]} in the cards popup.`);
@@ -178,7 +221,7 @@ export async function drawCard(person: Person, description: string) {
                 : await generateComfyImage(prompt, model, s.comfyUrl, width, height);
         url = await saveImage(image.data, image.format, person);
     }
-    setCard(person.key, { image: url, prompt: description, promptVersion: CARD_PROMPT_VERSION });
+    setCard(person.key, { image: url, prompt: description, promptVersion: CARD_PROMPT_VERSION, outfit: s.cardOutfit });
     await checkShape(url);
 }
 

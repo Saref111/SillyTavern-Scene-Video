@@ -15,7 +15,7 @@ Include:
 - Age range, gender, ethnicity or skin tone, face shape, eye color, hair color, length and style, and every lasting feature from the description (tattoos, piercings, freckles, scars, glasses, jewelry worn every day).
 - Build is required and must state the actual weight: use concrete words such as "slim", "slender", "petite", "toned", "athletic", "slim waist". Translate vague words ("curvy", "thick", "voluptuous", "full-figured") into "slim with an hourglass figure, narrow waist". Write a heavy build only when the description states plainly that the person is overweight.
 - Breast size is required for a woman and must keep the size from the description: image models draw breasts smaller than written, so state it with a bra cup size and a visible-volume word: small → "small A-cup breasts", medium → "medium C-cup breasts", large → "large, heavy DD-cup breasts", very large or huge → "very large, heavy F-cup breasts". A slim frame never makes them smaller. Keep hips and buttocks as described ("wide rounded hips", "round buttocks").
-- Clothing: underwear only, so the sheet shows the real figure; the clips dress the person. Use the underwear this person would wear if the description suggests it (style and color), otherwise plain matching cotton underwear: a simple bra and briefs for a woman, boxer briefs for a man. Always opaque and fully covering, barefoot. Name its color. No other garments. Never write that the person is naked, nude or topless: the sheet always shows underwear. End the description with the sentence about the underwear.
+{{outfit}}
 - No art style: the person is a real human in a photograph, even when the description comes from an anime or a game.`;
 
 /**
@@ -48,15 +48,51 @@ overall_soundscape: N/A
 
 non_diegetic_music: N/A`;
 
+/** MiniMax H3 prompt for a sheet drawn from a reference picture of the person (<Picture 1>). */
+export const SHEET_FROM_PICTURE_H3 = `integrated_multimodal_description:
+
+subject_definitions:
+<CHARACTER> character from <Picture 1>. Notes: {{description}}
+
+summary:
+[reference generation] static real photograph: a model casting reference sheet of <CHARACTER>, keep exactly the same face, hair, skin and body of <Picture 1>, full color.
+
+retention_analysis:
+<CHARACTER>: face and identity fully_preserved; clothing and pose follow the notes and the sheet.
+
+detailed_description:
+The target is a static real photograph (not CGI, not a 3D render, not a game character, not an illustration) of a reference sheet showing <CHARACTER> from different angles, each element is separated and not overlapping. Natural skin with pores and small imperfections, true-to-life colors, soft even studio light, 85mm lens, sharp focus.
+
+[Shot 1] static image.
+
+{{layout}}
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A`;
+
+/** Sheet prompt with a reference picture for other image models (OpenRouter, WaveSpeed edit models). */
+export const SHEET_FROM_PICTURE_PLAIN = `Real photograph, model casting reference sheet of the person in the attached picture: exactly one portrait, exactly three full-body figures and exactly six circles. Keep exactly the same face, hair, skin tone and body as in the picture. Not CGI, not a 3D render, not a game character, not an illustration: a real person shot in a photo studio, natural skin with pores and small imperfections, true-to-life colors, soft even studio light, 85mm lens, sharp focus. Notes about the person: {{description}}
+
+{{layout}}
+
+The same person, the same body and the same look everywhere. No text, labels or watermarks.`;
+
 /** Sheet prompt for other image models (SillyTavern's sources, Krea, Seedream…). */
 export const SHEET_FROM_TEXT_PLAIN = `Real photograph, model casting reference sheet: exactly one portrait, exactly three full-body figures and exactly six circles. Not CGI, not a 3D render, not a game character, not an illustration: a real person shot in a photo studio, natural skin with pores and small imperfections, true-to-life colors, soft even studio light, 85mm lens, sharp focus. The person: {{description}}
 
 {{layout}}
 
-The same person and the same underwear everywhere. No text, labels or watermarks.`;
+The same person, the same body and the same look everywhere. No text, labels or watermarks.`;
 
 /** Bump when CARD_PROMPT_INSTRUCTION changes, so saved card prompts are written again. */
-export const CARD_PROMPT_VERSION = 7;
+export const CARD_PROMPT_VERSION = 8;
+
+/** The clothing rule of the card description, by the outfit chosen in the cards popup. */
+export const CARD_OUTFIT_RULES = {
+    underwear: '- Clothing: underwear only, so the sheet shows the real figure; the clips dress the person. Use the underwear this person would wear if the description suggests it (style and color), otherwise plain matching cotton underwear: a simple bra and briefs for a woman, boxer briefs for a man. Always opaque and fully covering, barefoot. Name its color. No other garments. Never write that the person is naked, nude or topless: the sheet always shows underwear. End the description with the sentence about the underwear.',
+    nude: '- Clothing: none. The person is fully nude and barefoot, standing in a neutral, non-sexual reference pose, so the sheet shows only the body and the clips dress the person. No clothes, underwear, shoes or accessories except jewelry worn every day. End the description with "fully nude, barefoot".',
+};
 
 /** Sentences about nudity are dropped from a card description, which must always show underwear. */
 export const CARD_NUDITY = /\b(naked|nude|nudity|topless|bottomless|unclothed|undressed|bare[- ]?(chested|breasted|skinned)|without (any )?(clothes|clothing|underwear)|no (clothes|clothing|underwear))\b/i;
@@ -94,9 +130,10 @@ export const CARD_RULES = {
     h3: `## Reference pictures
 The video model receives reference pictures of some people (listed in the scene as <Picture N>). For each of them:
 - Refer to the person by the picture tag on first appearance, for example "the woman from <Picture 1>", then simply "she". Keep the tag in the shot where the person first appears.
-- Do not describe their face, hair, body or build: the picture defines them. Describe only clothing, pose, position and actions.
-- The pictures show the person in underwear only to define the body. Always name what the person wears in the clip (from the scene); without it the video copies the underwear.
+- The picture defines ONLY the face, hair and body. Do not describe them.
+- The picture does NOT define clothing or state: it shows the person in underwear or nude only to show the body, and the video model copies whatever it sees unless the prompt says otherwise. For every person with a picture, write in the shot where they first appear what they wear right now in the scene, garment by garment with colors (and what is open, pulled up, wet or missing), and their current state: wet or messy hair, makeup, sweat, blush, dirt, injuries, tiredness. Take all of it from the scene; when the scene doesn't say, choose clothing that fits the place and the moment, never the underwear or nudity of the picture.
+- When clothing changes during the clip (taken off, put on), say so in the shot where it happens.
 - Each picture is a character sheet of ONE person seen from several angles; show that person once, never as copies, and never merge two pictures into one person.
 - People without a picture are described in words as usual.`,
-    generic: 'Reference pictures: the video model receives reference images of some people (listed in the scene as "reference image N"). Each image is a character sheet of ONE person seen from several angles; show that person once. Refer to each such person as "the woman from reference image 1" (or man), do not describe their face, hair or build, and describe only their clothing, pose and actions. The images show the person in underwear only to define the body: always name what the person wears in the clip. People without a picture are described in words as usual.',
+    generic: 'Reference pictures: the video model receives reference images of some people (listed in the scene as "reference image N"). Each image is a character sheet of ONE person seen from several angles; show that person once. Refer to each such person as "the woman from reference image 1" (or man) and do not describe their face, hair or build. The images define only the face and body: they show the person in underwear or nude, and the video model copies that unless told otherwise. So for every such person always describe what they wear right now in the scene, garment by garment with colors, and their current state (wet or messy hair, makeup, sweat, injuries); when the scene doesn\'t say, choose clothing that fits the place and moment, never the underwear or nudity of the image. People without a picture are described in words as usual.',
 };

@@ -72,6 +72,7 @@ export function removeExtraPerson(id: string) {
     const s = settings();
     s.extraPeople[scope] = (s.extraPeople[scope] ?? []).filter(p => p.id !== id);
     delete s.cards[`extra:${scope}:${id}`];
+    delete s.cardRefs[`extra:${scope}:${id}`];
     save();
 }
 

@@ -66,10 +66,16 @@ export interface SceneVideoSettings {
     cardImageModel: string;
     /** Who draws cards: SillyTavern's Image Generation, WaveSpeed, OpenRouter or a ComfyUI workflow. */
     cardProvider: CardProvider;
+    /** WaveSpeed image-to-image model for cards drawn from a reference picture. */
+    cardEditModel: string;
+    /** Reference pictures for drawing cards, by card key (an image path or the avatar URL). */
+    cardRefs: Record<string, string>;
     /** OpenRouter image model for cards. */
     cardOpenRouterModel: string;
     /** ComfyUI image workflow for cards (from SillyTavern's workflows). */
     cardComfyWorkflow: string;
+    /** What the person wears on a card: underwear, or nothing so the video model never copies clothes. */
+    cardOutfit: CardOutfit;
     /** Card picture shape, e.g. "16:9", and resolution tier ("1k", "1.5k", "2k"). */
     cardAspect: string;
     cardResolution: string;
@@ -78,6 +84,7 @@ export interface SceneVideoSettings {
 }
 
 export type CardProvider = 'st' | 'wavespeed' | 'openrouter' | 'comfy';
+export type CardOutfit = 'underwear' | 'nude';
 
 /** Someone in the scene who isn't a SillyTavern character, e.g. a friend or a stranger from the story. */
 export interface ExtraPerson {
@@ -95,4 +102,6 @@ export interface AppearanceCard {
     prompt?: string;
     /** CARD_PROMPT_VERSION the prompt was written for; older prompts are written again. */
     promptVersion?: number;
+    /** The outfit the description was written for. */
+    outfit?: CardOutfit;
 }

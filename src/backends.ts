@@ -127,8 +127,8 @@ export async function generateVideo(args: GenerateArgs): Promise<VideoResult> {
 }
 
 /** Draws an appearance card with a WaveSpeed text-to-image model. */
-export async function generateCardImage(prompt: string, model: string, aspect: string, resolution: string): Promise<VideoResult> {
-    const data = await postJson(`${PLUGIN_BASE}/wavespeed/image`, { prompt, model, aspect, resolution });
+export async function generateCardImage(prompt: string, model: string, aspect: string, resolution: string, references?: { data: string; format: string }[]): Promise<VideoResult> {
+    const data = await postJson(`${PLUGIN_BASE}/wavespeed/image`, { prompt, model, aspect, resolution, references });
     if (!data?.data) throw new Error('WaveSpeed returned no picture.');
     return { format: data.format, data: data.data };
 }
@@ -151,6 +151,13 @@ export async function generateComfyImage(prompt: string, workflowName: string, u
     }
     const data = await postJson('/api/sd/comfy/generate', { url, prompt: `{"prompt": ${workflow}}` });
     if (!data?.data) throw new Error('ComfyUI returned no picture.');
+    return { format: data.format, data: data.data };
+}
+
+/** Draws an appearance card with an OpenRouter image model from a reference picture (through the plugin). */
+export async function generateOpenRouterCardImage(prompt: string, model: string, aspect: string, references: { data: string; format: string }[]): Promise<VideoResult> {
+    const data = await postJson(`${PLUGIN_BASE}/openrouter/image`, { prompt, model, aspect, references });
+    if (!data?.data) throw new Error('OpenRouter returned no picture.');
     return { format: data.format, data: data.data };
 }
 

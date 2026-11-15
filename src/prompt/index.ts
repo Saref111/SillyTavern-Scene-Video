@@ -15,7 +15,7 @@ export { resolvePromptFormat } from './format';
 /** Tells the LLM which person each reference picture shows. */
 function referencesBlock(refs: CardRef[], h3: boolean): string {
     const lines = refs.map((r, i) => `${h3 ? `<Picture ${i + 1}>` : `reference image ${i + 1}`}: ${r.person.name}${r.person.kind === 'persona' ? ' (the user)' : ''}`);
-    return `[Reference pictures sent to the video model. Never write these names in the prompt; use the tags]\n${lines.join('\n')}`;
+    return `[Reference pictures sent to the video model. Never write these names in the prompt; use the tags. The pictures show only face and body: describe each person's current clothing and state from the scene]\n${lines.join('\n')}`;
 }
 
 export async function writeVideoPrompt(messageId: number, s: SceneVideoSettings, focus?: string, direction?: string, refs: CardRef[] = []): Promise<string> {

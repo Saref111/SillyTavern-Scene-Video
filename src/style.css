@@ -111,3 +111,16 @@
     flex: 1;
     min-width: 0;
 }
+
+.scene-video-card-ref {
+    margin-top: 4px;
+}
+
+.scene-video-card-ref-img {
+    height: 32px;
+    width: auto;
+    max-width: 64px;
+    object-fit: cover;
+    border-radius: 3px;
+    vertical-align: middle;
+}

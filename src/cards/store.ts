@@ -16,3 +16,18 @@ export function removeCard(key: string) {
     delete settings().cards[key];
     save();
 }
+
+/** The reference picture for drawing this person's card, if one was chosen. */
+export function getReference(key: string): string | undefined {
+    return settings().cardRefs[key] || undefined;
+}
+
+export function setReference(key: string, image: string) {
+    settings().cardRefs[key] = image;
+    save();
+}
+
+export function removeReference(key: string) {
+    delete settings().cardRefs[key];
+    save();
+}

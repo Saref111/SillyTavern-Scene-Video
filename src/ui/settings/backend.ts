@@ -82,6 +82,11 @@ export function renderModelSelect() {
     $('#scene_video_model').val(current).toggle(!isKnown);
 }
 
+/** Shown when appearance cards are switched on: they only work with a model that takes reference pictures. */
+export function adviseCardModel() {
+    toastr.success('Appearance cards need a reference model: choose a reference-to-video model in Model.', 'Scene Video');
+}
+
 /** Loads the selected service's models into the select; `force` asks the service again. */
 export async function refreshModels(force = false) {
     const backend = settings().backend;

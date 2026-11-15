@@ -9,7 +9,7 @@ import { listComfyWorkflows, PLUGIN_BASE } from '../backends';
 import { ctx } from '../core/context';
 
 export type CloudBackend = 'openrouter' | 'wavespeed';
-export type ModelSource = CloudBackend | 'wavespeed-image' | 'openrouter-image' | 'comfy-workflow';
+export type ModelSource = CloudBackend | 'wavespeed-image' | 'wavespeed-edit' | 'openrouter-image' | 'comfy-workflow';
 
 export interface ModelOption {
     id: string;
@@ -20,6 +20,7 @@ export interface ModelOption {
 const SUGGESTIONS: Record<ModelSource, string[]> = {
     ...MODEL_SUGGESTIONS,
     'wavespeed-image': ['wavespeed-ai/minimax-h3/text-to-image', 'wavespeed-ai/krea-v2/turbo', 'bytedance/seedream-v4.5'],
+    'wavespeed-edit': ['wavespeed-ai/minimax-h3/image-edit'],
     'openrouter-image': ['minimax/minimax-h3-image', 'google/gemini-3.1-flash-image', 'krea/krea-2-medium-turbo'],
     'comfy-workflow': [],
 };
@@ -59,6 +60,8 @@ async function fetchModels(source: ModelSource): Promise<ModelOption[]> {
             return (await postForJson(`${PLUGIN_BASE}/wavespeed/models`) as any[]).map(wavespeedOption);
         case 'wavespeed-image':
             return (await postForJson(`${PLUGIN_BASE}/wavespeed/models`, { kind: 'image' }) as any[]).map(wavespeedOption);
+        case 'wavespeed-edit':
+            return (await postForJson(`${PLUGIN_BASE}/wavespeed/models`, { kind: 'edit' }) as any[]).map(wavespeedOption);
         case 'openrouter-image': {
             // SillyTavern's own list (the one its Image Generation uses): [{ value, text }].
             const models: any[] = await postForJson('/api/openrouter/models/image');

@@ -196,9 +196,11 @@ async function generateWaveSpeed(request, signal) {
     const b = request.body;
 
     // Model is a path like "google/veo3.1/text-to-video" or "wavespeed-ai/wan-2.2/t2v-720p".
-    // With reference pictures a text-to-video path switches to the model's reference-to-video endpoint.
+    // With reference pictures a text-to-video path switches to the model's reference-to-video endpoint, and
+    // without them (no card in this clip) a reference-to-video path switches back to text-to-video.
     let modelPath = String(b.model || '').replace(/^\/+|\/+$/g, '');
     if (b.referenceUrls?.length) modelPath = modelPath.replace('text-to-video', 'reference-to-video');
+    else modelPath = modelPath.replace('reference-to-video', 'text-to-video');
     if (!/^[\w.-]+(\/[\w.-]+)+$/.test(modelPath)) {
         throw new HttpError(400, `Invalid WaveSpeed model path: ${modelPath}`);
     }
@@ -271,18 +273,22 @@ function optionsOf(doc, param) {
     return line ? [...line[1].matchAll(/"([^"]+)"/g)].map(m => m[1]) : [];
 }
 
-async function imageShape(modelPath, aspect, resolution, signal) {
+async function modelDoc(modelPath, signal) {
     if (!imageParamsCache.has(modelPath)) {
         let doc = '';
         try {
             const res = await fetch(`https://wavespeed.ai/models/${modelPath}/llms.txt`, { signal });
             if (res.ok) doc = await res.text();
         } catch {
-            // no documentation: fall back to the common parameters below
+            // no documentation: fall back to the common parameters
         }
         imageParamsCache.set(modelPath, doc);
     }
-    const doc = imageParamsCache.get(modelPath);
+    return imageParamsCache.get(modelPath);
+}
+
+async function imageShape(modelPath, aspect, resolution, signal) {
+    const doc = await modelDoc(modelPath, signal);
     const shape = {};
     const [aw, ah] = String(aspect || '16:9').split(':').map(Number);
     const ratio = aw > 0 && ah > 0 ? aw / ah : 16 / 9;
@@ -314,9 +320,45 @@ async function generateWaveSpeedImage(request, signal) {
         throw new HttpError(400, `Invalid WaveSpeed model path: ${modelPath}`);
     }
     const shape = await imageShape(modelPath, b.aspect, b.resolution, signal);
-    console.info('[scene-video] card image', modelPath, JSON.stringify(shape));
-    const body = withoutNulls({ prompt: b.prompt, ...shape, ...(b.extra || {}) });
+    // A reference picture (an edit model) needs a public link; edit models take "images" (a list) or "image".
+    const pictures = {};
+    if (Array.isArray(b.references) && b.references.length) {
+        const urls = await hostReferences(b.references, signal);
+        const doc = await modelDoc(modelPath, signal);
+        if (doc.includes('**`images`**') || !doc.includes('**`image`**')) pictures.images = urls;
+        else pictures.image = urls[0];
+    }
+    console.info('[scene-video] card image', modelPath, JSON.stringify(shape), pictures.images || pictures.image ? 'with a reference' : '');
+    const body = withoutNulls({ prompt: b.prompt, ...pictures, ...shape, ...(b.extra || {}) });
     return runWaveSpeed(modelPath, body, { 'Authorization': `Bearer ${key}` }, signal);
+}
+
+// ---------- OpenRouter images (cards drawn from a reference picture) ----------
+
+async function generateOpenRouterImage(request, signal) {
+    const key = getKey(request, SECRET_OPENROUTER, 'OpenRouter');
+    const b = request.body;
+    if (!b.model) throw new HttpError(400, 'Model is empty');
+    const content = [{ type: 'text', text: String(b.prompt || '') }];
+    for (const ref of (Array.isArray(b.references) ? b.references : []).slice(0, 3)) {
+        const format = /^(png|jpe?g|webp)$/i.test(ref.format) ? ref.format.toLowerCase().replace('jpg', 'jpeg') : 'png';
+        content.push({ type: 'image_url', image_url: { url: `data:image/${format};base64,${ref.data}` } });
+    }
+    const data = await fetchJson(`${OR_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { ...OR_HEADERS, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: b.model,
+            messages: [{ role: 'user', content }],
+            modalities: ['image', 'text'],
+            image_config: b.aspect ? { aspect_ratio: b.aspect } : undefined,
+        }),
+        signal,
+    }, 'OpenRouter image');
+    const url = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    const match = /^data:image\/(\w+);base64,(.+)$/s.exec(String(url || ''));
+    if (!match) throw new HttpError(502, `OpenRouter returned no picture: ${String(data?.choices?.[0]?.message?.content || JSON.stringify(data).slice(0, 300))}`);
+    return { format: match[1].replace('jpeg', 'jpg'), data: match[2] };
 }
 
 // ---------- Router ----------
@@ -347,8 +389,8 @@ export async function init(router) {
     });
 
     // WaveSpeed's catalog depends on the account, so it needs the key. Only models that take a prompt are
-    // listed: text-to-video (the extension switches to reference-to-video for cards itself) or, with
-    // { kind: 'image' }, text-to-image for drawing cards.
+    // listed: text-to-video and reference-to-video (for appearance cards) or, for drawing
+    // cards, text-to-image ({ kind: 'image' }) and image-to-image models that take a reference ({ kind: 'edit' }).
     router.post('/wavespeed/models', async (request, res) => {
         try {
             const key = getKey(request, SECRET_WAVESPEED, 'WaveSpeed');
@@ -358,10 +400,11 @@ export async function init(router) {
                 catalog = { at: Date.now(), models: Array.isArray(data?.data) ? data.data : [] };
                 wavespeedModelsCache.set(key, catalog);
             }
-            const type = request.body?.kind === 'image' ? 'text-to-image' : 'text-to-video';
-            const pattern = new RegExp(`/${type}(-[\\w-]+)?$`);
+            const kinds = { image: ['text-to-image'], edit: ['image-to-image'] };
+            const types = kinds[request.body?.kind] || ['text-to-video', 'reference-to-video'];
+            const pattern = new RegExp(`/(${types.join('|')})(-[\\w-]+)?$`);
             const models = catalog.models
-                .filter(m => m?.model_id && (m.type === type || pattern.test(m.model_id)))
+                .filter(m => m?.model_id && (types.includes(m.type) || pattern.test(m.model_id)))
                 .map(m => ({ id: m.model_id, name: m.name || m.model_id, price: typeof m.base_price === 'number' ? m.base_price : null }))
                 .sort((a, b) => a.id.localeCompare(b.id));
             res.send(models);
@@ -392,6 +435,19 @@ export async function init(router) {
             if (!res.headersSent) {
                 res.status(error.status && error.status < 600 ? error.status : 500).send(error.message);
             }
+        }
+    });
+
+    router.post('/openrouter/image', async (request, res) => {
+        const controller = new AbortController();
+        request.socket.removeAllListeners('close');
+        request.socket.on('close', () => controller.abort());
+        try {
+            if (!request.body?.prompt) throw new HttpError(400, 'Prompt is empty');
+            res.send(await generateOpenRouterImage(request, controller.signal));
+        } catch (error) {
+            console.warn('[scene-video]', error.message);
+            if (!res.headersSent) res.status(error.status && error.status < 600 ? error.status : 500).send(error.message);
         }
     });
 

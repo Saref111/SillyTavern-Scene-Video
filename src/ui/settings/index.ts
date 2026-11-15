@@ -7,7 +7,7 @@ import type { Aspect, AudioMode, BackendId, CameraMode, PromptFormat, ShotMode }
 import { saveWaveSpeedKey } from '../../backends';
 import { syncButtons } from '../../chat/button';
 import { cloudCfg, look, save, settings } from '../../core/settings';
-import { CUSTOM_MODEL, refreshComfyWorkflows, refreshModels, refreshPluginStatus, renderBackendSection, renderPromptFormat, showOpenRouterModels } from './backend';
+import { adviseCardModel, CUSTOM_MODEL, refreshComfyWorkflows, refreshModels, refreshPluginStatus, renderBackendSection, renderPromptFormat, showOpenRouterModels } from './backend';
 import { openCardsPopup } from '../cards';
 import { initProfileSelect } from './profile';
 
@@ -94,6 +94,10 @@ export function initSettingsUI() {
     bindInput('#scene_video_aspect', v => { look(settings()).aspect = v as Aspect; });
     bindInput('#scene_video_two_step', (_v, c) => { settings().twoStep = c; });
     bindInput('#scene_video_use_cards', (_v, c) => { settings().useCards = c; });
+    // A checkbox fires both "input" and "change", so the notice listens to "change" only.
+    $('#scene_video_use_cards').on('change', function (this: HTMLInputElement) {
+        if (this.checked) adviseCardModel();
+    });
     bindInput('#scene_video_shots', v => { settings().shotMode = v as ShotMode; });
     bindInput('#scene_video_camera', v => { settings().cameraMode = v as CameraMode; renderLook(); });
     bindInput('#scene_video_audio_mode', v => { settings().audioMode = v as AudioMode; });
